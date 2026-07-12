@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+// Bin shim — extensionless so it reads as a Unix command. Node resolves the
+// parser via the parent package.json's `"type": "module"`. The real CLI lives
+// in dist/cli.js; keeping a tiny shim keeps `npm link` stable across rebuilds.
+
+import('../dist/cli.js').catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error('composewatch: failed to load dist/cli.js — did you run `npm run build`?');
+    console.error(err);
+    process.exit(1);
+});
