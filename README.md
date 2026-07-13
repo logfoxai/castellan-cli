@@ -1,11 +1,12 @@
 # composewatch
 
-[![build status](https://github.com/logfoxai/composewatch/actions/workflows/release.yml/badge.svg)](https://github.com/logfoxai/composewatch/actions)
+[![next](https://img.shields.io/github/actions/workflow/status/logfoxai/composewatch/release.yml?branch=next&label=next)](https://github.com/logfoxai/composewatch/actions/workflows/release.yml)
+[![release](https://img.shields.io/github/actions/workflow/status/logfoxai/composewatch/release.yml?branch=main&label=release)](https://github.com/logfoxai/composewatch/actions/workflows/release.yml)
 [![SemVer](https://img.shields.io/badge/SemVer-2.0.0-blue)]()
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 [![AutoRel](https://img.shields.io/badge/%F0%9F%9A%80%20AutoRel-2D4DDE)](https://github.com/mhweiner/autorel)
 
-A keen, low-friction watcher for **Docker Compose** stacks reached over **Tailscale SSH**. Sibling of [`ecswatch`](https://github.com/logfoxai/ecswatch) — same UX surface (CI stream / TUI / inspect), swapped for compose + Watchtower rollouts on Logfox hybrid hosts (prime/dev EC2 and prod Vultr).
+A keen, low-friction watcher for **Docker Compose** stacks reached over **Tailscale SSH**. Sibling of [`ecswatch`](https://github.com/logfoxai/ecswatch) — same UX surface (CI stream / TUI / inspect), tuned for Watchtower rollouts on Logfox platform hosts.
 
 - **CI mode**: polls image digests + health until Watchtower rolls a new digest and services settle healthy; exits non-zero on restart loops / exits; GitHub Actions `::group::` / `::error::` annotations.
 - **Interactive TUI** (default on a real TTY): services, health, digests, diagnostics, live log poll over SSH.
