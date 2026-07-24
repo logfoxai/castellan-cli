@@ -1,7 +1,6 @@
 import {Box, Text, useStdout} from 'ink';
 import React from 'react';
 import {colors} from '../theme.js';
-import {AD_URL, AD_TEXT, osc8} from '../../ad.js';
 
 interface Key {
     keys: string;
@@ -18,7 +17,6 @@ const KEYS: Key[] = [
 ];
 
 const SEP = ' · ';
-const AD_GAP = 4;
 
 interface Props {
     showMenu: boolean;
@@ -42,21 +40,17 @@ export function Footer({showMenu}: Props): React.ReactElement {
     const keysWidth = KEYS.map((k) => `${k.keys} ${k.label}`).join(SEP).length;
     const avail = cols - 2;
     const fitsFull = avail >= keysWidth;
-    const fitsFullAndAd = avail >= keysWidth + AD_TEXT.length + AD_GAP;
 
     if (fitsFull) {
 
         return (
-            <Box paddingX={1} width="100%" justifyContent="space-between">
-                <Box>
-                    {KEYS.map((k, i) => (
-                        <Box key={k.keys}>
-                            <KeyHint k={k} />
-                            {i < KEYS.length - 1 ? <Text color={colors.dim}>{SEP}</Text> : null}
-                        </Box>
-                    ))}
-                </Box>
-                {fitsFullAndAd ? <Text color={colors.dim}>{osc8(AD_URL, AD_TEXT)}</Text> : null}
+            <Box paddingX={1} width="100%">
+                {KEYS.map((k, i) => (
+                    <Box key={k.keys}>
+                        <KeyHint k={k} />
+                        {i < KEYS.length - 1 ? <Text color={colors.dim}>{SEP}</Text> : null}
+                    </Box>
+                ))}
             </Box>
         );
 

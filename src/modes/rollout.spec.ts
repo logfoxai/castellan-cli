@@ -26,10 +26,10 @@ function container(partial: Partial<ContainerSnapshot> & {service: string}): Con
 function stack(containers: ContainerSnapshot[]): StackSnapshot {
 
     return {
-        env: 'prime',
-        ssh: 'ubuntu@logfox-prime',
-        dir: '/opt/logfox/compose',
-        project: 'logfox',
+        env: 'staging',
+        ssh: 'deploy@staging',
+        dir: '/srv/app/compose',
+        project: 'app',
         containers,
         fetchedAt: new Date(),
     };

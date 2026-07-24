@@ -1,4 +1,4 @@
-// Heuristic diagnostics for Docker Compose / Watchtower stacks.
+// Heuristic diagnostics for Docker Compose stacks.
 
 import type {ContainerSnapshot, Diagnostic, StackSnapshot} from '../types.js';
 
@@ -76,7 +76,7 @@ export function analyzeWithExpected(stack: StackSnapshot, expectedServices: stri
                 severity: 'error',
                 title: `Watched service missing: ${svc}`,
                 detail: `Expected compose service "${svc}" but it does not appear in docker compose ps.`,
-                suggestion: 'Check compose file / scale settings; Watchtower may have removed a crashed container.',
+                suggestion: 'Check compose file, scale settings, and recent deploy activity on the host.',
                 sourceServices: [svc],
             });
 

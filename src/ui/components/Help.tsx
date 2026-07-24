@@ -41,7 +41,7 @@ export function Help(): React.ReactElement {
             </Box>
             <Box marginTop={1}>
                 <Text color={colors.muted}>
-                    Tip: requires Tailscale SSH reachability to the compose host (prime/dev EC2 or prod Vultr).
+                    Tip: requires SSH reachability to the compose host (BatchMode=yes).
                 </Text>
             </Box>
         </Box>

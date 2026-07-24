@@ -1,11 +1,10 @@
 {
   "name": "composewatch",
   "version": "0.0.0-autorel",
-  "description": "Beautiful interactive TUI for inspecting Docker Compose stacks over SSH + a CI-friendly streaming mode for GitHub Actions. Sibling of ecswatch for Logfox hybrid hosts.",
+  "description": "CLI for watching Docker Compose rollouts over SSH in CI and an interactive terminal UI.",
   "keywords": [
     "docker",
     "compose",
-    "watchtower",
     "deploy",
     "tui",
     "cli",

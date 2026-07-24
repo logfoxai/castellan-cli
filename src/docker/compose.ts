@@ -136,7 +136,7 @@ export async function describeStack(ctx: CliContext): Promise<StackSnapshot> {
             env: ctx.env,
             ssh: ctx.ssh,
             dir: ctx.dir,
-            project: 'logfox',
+            project: '',
             containers: [],
             fetchedAt: new Date(),
         };
@@ -194,7 +194,7 @@ export async function describeStack(ctx: CliContext): Promise<StackSnapshot> {
 
     containers.sort((a, b) => a.service.localeCompare(b.service));
 
-    const project = rows[0]?.Project ?? 'logfox';
+    const project = rows[0]?.Project ?? '';
 
     return {
         env: ctx.env,

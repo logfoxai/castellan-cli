@@ -1,4 +1,4 @@
-// CI/streaming mode for compose + Watchtower rollouts.
+// CI/streaming mode for compose rollouts.
 
 import {analyzeWithExpected} from '../analyze/diagnostics.js';
 import {rootCause} from '../analyze/rootCause.js';
@@ -58,7 +58,7 @@ export async function runCi(ctx: CliContext, opts: CiOptions): Promise<number> {
 };
 
     process.on('SIGINT', onSigint);
-    console.log(`${TAG} ${c.muted('waiting for Watchtower digest change (use --once for snapshot, Ctrl-C to stop)')}`);
+    console.log(`${TAG} ${c.muted('waiting for digest change (use --once for snapshot, Ctrl-C to stop)')}`);
 
     while (true) {
 

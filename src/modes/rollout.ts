@@ -1,4 +1,4 @@
-// Pure Watchtower / compose rollout outcome logic — unit-tested without SSH.
+// Pure compose rollout outcome logic — unit-tested without SSH.
 //
 // Signal: image digests of watched services + health.
 //   - deploying: digests changing, or unhealthy/restarting after a change
@@ -121,7 +121,7 @@ export function evaluateRollout(stack: StackSnapshot, state: RolloutWatchState):
 
     if (!state.sawDigestChange) {
 
-        return {kind: 'pending', reason: 'waiting for image digest change (Watchtower pull)'};
+        return {kind: 'pending', reason: 'waiting for image digest change'};
 
 }
 
