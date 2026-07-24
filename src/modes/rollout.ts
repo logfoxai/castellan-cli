@@ -1,167 +1,228 @@
-// Pure compose rollout outcome logic — unit-tested without SSH.
-//
-// Signal: image digests of watched services + health.
-//   - deploying: digests changing, or unhealthy/restarting after a change
-//   - success: saw a digest change, digests stable, all watched healthy/running
-//   - failed: restart loop / exited / prolonged unhealthy after a change
-
-import type {ContainerSnapshot, StackSnapshot} from '../types.js';
+import type {DeploymentEvent, ServiceState, ServiceStatus} from '../castellan/types.js';
 
 export type RolloutOutcome =
-    | {kind: 'pending'; reason: string}
-    | {kind: 'success'; digests: Record<string, string>}
-    | {kind: 'failed'; reason: string};
+    | {kind: 'pending'}
+    | {kind: 'success'}
+    | {kind: 'failure'; reason: string};
 
-export interface RolloutWatchState {
-    /** Digests captured on first successful poll. */
-    baselineDigests: Record<string, string>;
-    /** True once any watched service digest differs from baseline. */
-    sawDigestChange: boolean;
-    /** Digests we expect to settle on (captured when change first observed / updated while still moving). */
-    targetDigests: Record<string, string>;
-    /** True once targetDigests stopped changing between consecutive polls after a change. */
-    digestsStable: boolean;
+export type ServiceWatch = {
+    name: string;
+    baselineDigest: string | null;
+    sawDeployActivity: boolean;
+    sawRollback: boolean;
+    sawFailureEvent: boolean;
+};
+
+export type RolloutWatchState = {
+    services: Record<string, ServiceWatch>;
+};
+
+const ACTIVE_STATES: ReadonlySet<ServiceState> = new Set([
+    'checking',
+    'updating',
+    'verifying',
+    'rollback',
+]);
+
+export function initialWatchState(services: ServiceStatus[]): RolloutWatchState {
+
+    const map: Record<string, ServiceWatch> = {};
+
+    for (const service of services) {
+
+        map[service.name] = {
+            name: service.name,
+            baselineDigest: service.currentDigest,
+            sawDeployActivity: false,
+            sawRollback: false,
+            sawFailureEvent: false,
+        };
+
+    }
+
+    return {services: map};
+
 }
 
-export function digestsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
-
-    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-
-    for (const k of keys) {
-
-        if ((a[k] ?? '') !== (b[k] ?? '')) return false;
-
-}
-    return true;
-
-}
-
-export function nextRolloutState(
-    prev: RolloutWatchState,
-    currentDigests: Record<string, string>,
+export function noteEvents(
+    state: RolloutWatchState,
+    events: DeploymentEvent[],
+    watchedNames: Set<string>,
 ): RolloutWatchState {
 
-    let {sawDigestChange, targetDigests, digestsStable} = prev;
-    const baselineDigests = prev.baselineDigests;
+    const next = cloneState(state);
 
-    if (!sawDigestChange) {
+    for (const event of events) {
 
-        if (!digestsEqual(baselineDigests, currentDigests)) {
+        if (!watchedNames.has(event.service)) continue;
 
-            sawDigestChange = true;
-            targetDigests = {...currentDigests};
-            digestsStable = false;
+        const watch = next.services[event.service];
 
-}
+        if (!watch) continue;
 
-} else if (!digestsEqual(targetDigests, currentDigests)) {
+        if (event.type === 'deploy' || event.type === 'check') {
 
-        targetDigests = {...currentDigests};
-        digestsStable = false;
+            watch.sawDeployActivity = true;
 
-} else {
+        }
 
-        digestsStable = true;
+        if (event.type === 'rollback') {
 
-}
+            watch.sawRollback = true;
+            watch.sawDeployActivity = true;
 
-    return {baselineDigests, sawDigestChange, targetDigests, digestsStable};
+        }
 
-}
+        if (event.type === 'failure') {
 
-function watchedOf(stack: StackSnapshot): ContainerSnapshot[] {
+            watch.sawFailureEvent = true;
+            watch.sawDeployActivity = true;
 
-    return stack.containers.filter((c) => c.watched);
+        }
 
-}
+    }
 
-export function evaluateRollout(stack: StackSnapshot, state: RolloutWatchState): RolloutOutcome {
-
-    const watched = watchedOf(stack);
-
-    if (watched.length === 0) {
-
-        return {kind: 'pending', reason: 'no watched containers yet'};
+    return next;
 
 }
 
-    // Hard failures anytime after we've started watching a change.
-    if (state.sawDigestChange) {
+export function noteStatus(state: RolloutWatchState, services: ServiceStatus[]): RolloutWatchState {
 
-        for (const c of watched) {
+    const next = cloneState(state);
 
-            if (c.state === 'exited' || c.state === 'dead') {
+    for (const service of services) {
 
-                return {
-                    kind: 'failed',
-                    reason: `${c.service} exited (exit=${c.exitCode ?? '?'}) during rollout`,
-                };
+        const watch = next.services[service.name];
 
-}
-            if (c.state === 'restarting') {
+        if (!watch) continue;
 
-                return {
-                    kind: 'failed',
-                    reason: `${c.service} is in a restart loop during rollout`,
-                };
+        if (ACTIVE_STATES.has(service.state)) {
 
-}
-            if (c.restartCount >= 8) {
+            watch.sawDeployActivity = true;
 
-                return {
-                    kind: 'failed',
-                    reason: `${c.service} restartCount=${c.restartCount} during rollout`,
-                };
+        }
 
-}
+        if (service.state === 'rollback') {
 
-}
+            watch.sawRollback = true;
 
-}
+        }
 
-    if (!state.sawDigestChange) {
+        if (
+            watch.baselineDigest !== null
+            && service.currentDigest !== null
+            && service.currentDigest !== watch.baselineDigest
+        ) {
 
-        return {kind: 'pending', reason: 'waiting for image digest change'};
+            watch.sawDeployActivity = true;
+
+        }
+
+    }
+
+    return next;
 
 }
 
-    if (!state.digestsStable) {
+export function evaluateRollout(
+    state: RolloutWatchState,
+    services: ServiceStatus[],
+): RolloutOutcome {
 
-        return {kind: 'pending', reason: 'image digests still changing'};
+    const byName = new Map(services.map((service) => [service.name, service]));
+
+    for (const watch of Object.values(state.services)) {
+
+        const service = byName.get(watch.name);
+
+        if (!service) {
+
+            return {kind: 'failure', reason: `Castellan no longer reports service ${watch.name}`};
+
+        }
+
+        if (service.state === 'failed' || watch.sawFailureEvent) {
+
+            const detail = service.lastError ?? 'Castellan reported failure';
+
+            return {kind: 'failure', reason: `${watch.name}: ${detail}`};
+
+        }
+
+        if (ACTIVE_STATES.has(service.state)) {
+
+            return {kind: 'pending'};
+
+        }
+
+    }
+
+    for (const watch of Object.values(state.services)) {
+
+        const service = byName.get(watch.name);
+
+        if (!service) continue;
+
+        if (service.state !== 'stable' && service.state !== 'idle') {
+
+            return {kind: 'pending'};
+
+        }
+
+        if (!watch.sawDeployActivity) {
+
+            return {kind: 'pending'};
+
+        }
+
+        const digestAdvanced =
+            watch.baselineDigest !== null
+            && service.currentDigest !== null
+            && service.currentDigest !== watch.baselineDigest;
+
+        if (watch.sawRollback && !digestAdvanced) {
+
+            return {
+                kind: 'failure',
+                reason: `${watch.name}: rolled back to previous digest`,
+            };
+
+        }
+
+        if (!digestAdvanced) {
+
+            // Checked registry but no new digest landed (or still on baseline).
+            // Treat as pending until timeout — caller decides.
+            return {kind: 'pending'};
+
+        }
+
+        if (
+            service.desiredDigest !== null
+            && service.currentDigest !== null
+            && service.desiredDigest !== service.currentDigest
+        ) {
+
+            return {kind: 'pending'};
+
+        }
+
+    }
+
+    return {kind: 'success'};
 
 }
 
-    for (const c of watched) {
+function cloneState(state: RolloutWatchState): RolloutWatchState {
 
-        if (c.state !== 'running') {
+    const services: Record<string, ServiceWatch> = {};
 
-            return {kind: 'pending', reason: `${c.service} state=${c.state}`};
+    for (const [name, watch] of Object.entries(state.services)) {
 
-}
-        if (c.health === 'unhealthy') {
+        services[name] = {...watch};
 
-            return {kind: 'pending', reason: `${c.service} still unhealthy`};
+    }
 
-}
-        if (c.health === 'starting') {
-
-            return {kind: 'pending', reason: `${c.service} health starting`};
-
-}
-
-}
-
-    return {kind: 'success', digests: state.targetDigests};
-
-}
-
-/** True when every watched container is running and not unhealthy (for --once / inspect). */
-export function stackHealthy(stack: StackSnapshot): boolean {
-
-    const watched = watchedOf(stack);
-
-    if (watched.length === 0) return false;
-    return watched.every((c) =>
-        c.state === 'running' && c.health !== 'unhealthy' && c.health !== 'starting');
+    return {services};
 
 }

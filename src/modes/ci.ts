@@ -1,245 +1,305 @@
-// CI/streaming mode for compose rollouts.
+// CI/streaming mode for Castellan rollouts (ecswatch-shaped):
+//
+//   1. Resolve services via Castellan /v1/status
+//   2. Optionally POST /v1/forceCheck
+//   3. Poll status + history; print new events and state changes
+//   4. Exit 0 when watched services settle on a new digest; 1 on failure/timeout
 
-import {analyzeWithExpected} from '../analyze/diagnostics.js';
-import {rootCause} from '../analyze/rootCause.js';
-import {describeStack, watchedDigests} from '../docker/compose.js';
-import {tailLogs} from '../docker/logs.js';
+import {CastellanClient} from '../castellan/client.js';
+import {resolveServices} from '../castellan/resolve.js';
+import type {DeploymentEvent, ServiceStatus} from '../castellan/types.js';
 import * as gh from '../ghAnnotations.js';
-import {c, colorRolloutKind, colorStatusMessage, pill} from '../theme.js';
-import type {CliContext, LogLine, StackSnapshot} from '../types.js';
-import {evaluateRollout, nextRolloutState, stackHealthy, type RolloutWatchState} from './rollout.js';
+import {c, colorEventType, colorServiceState, shortDigest} from '../theme.js';
+import {
+    evaluateRollout,
+    initialWatchState,
+    noteEvents,
+    noteStatus,
+    type RolloutWatchState,
+} from './rollout.js';
 
-const POLL_MS = 5_000;
-const TAG = c.accent('[compose]');
+const DEFAULT_POLL_MS = 5_000;
+const DEFAULT_TIMEOUT_MS = 15 * 60_000;
+const TAG = c.accent('[castellan]');
 
-export interface CiOptions {
-    once: boolean;
-}
+export type CiOptions = {
+    client: CastellanClient;
+    serviceQueries: string[];
+    forceCheck: boolean;
+    pollMs?: number;
+    timeoutMs?: number;
+    now?: () => number;
+    sleep?: (ms: number) => Promise<void>;
+};
 
-export async function runCi(ctx: CliContext, opts: CiOptions): Promise<number> {
+export async function runCi(opts: CiOptions): Promise<number> {
 
-    console.log(`${c.primary('==>')} Watching ${c.fg(ctx.env)} via ${c.fg(ctx.ssh)} (${c.muted(ctx.dir)})`);
+    const pollMs = opts.pollMs ?? DEFAULT_POLL_MS;
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const now = opts.now ?? Date.now;
+    const sleep = opts.sleep ?? defaultSleep;
+    const startedAt = now();
 
-    let stack: StackSnapshot;
+    console.log(`${c.primary('==>')} Watching Castellan services: ${c.fg(opts.serviceQueries.join(', '))}`);
+
+    let status;
 
     try {
 
-        stack = await describeStack(ctx);
+        await opts.client.health();
+        status = await opts.client.status();
 
-} catch (err) {
+    } catch (err) {
 
         const msg = err instanceof Error ? err.message : String(err);
 
-        gh.error(msg, {title: 'composewatch: host lookup failed'});
+        gh.error(msg, {title: 'castwatch: Castellan unreachable'});
         console.error(c.error(msg));
         return 1;
 
-}
+    }
 
-    if (opts.once) {
+    if (status.paused) {
 
-        printSnapshot(stack, ctx);
-        return stackHealthy(stack) ? 0 : 1;
+        console.log(`${TAG} ${c.warning('Castellan polling is paused — forceCheck / deploys may still run')}`);
 
-}
+    }
 
-    let rollout: RolloutWatchState = {
-        baselineDigests: watchedDigests(stack),
-        sawDigestChange: false,
-        targetDigests: {},
-        digestsStable: false,
-    };
+    let resolved;
 
-    let lastSig = '';
+    try {
+
+        resolved = resolveServices(status.services, opts.serviceQueries);
+
+    } catch (err) {
+
+        const msg = err instanceof Error ? err.message : String(err);
+
+        gh.error(msg, {title: 'castwatch: ambiguous service'});
+        console.error(c.error(msg));
+        return 1;
+
+    }
+
+    if (resolved.missing.length > 0) {
+
+        const known = status.services.map((service) => service.name).sort().join(', ') || '(none)';
+        const msg = `Unknown Castellan service(s): ${resolved.missing.join(', ')}. Known: ${known}`;
+
+        gh.error(msg, {title: 'castwatch: service not found'});
+        console.error(c.error(msg));
+        return 1;
+
+    }
+
+    const watched = resolved.resolved;
+    const watchedNames = new Set(watched.map((service) => service.name));
+
+    for (const service of watched) {
+
+        console.log(
+            `${TAG} ${c.fg(service.name)} ${colorServiceState(service.state)} `
+            + `${c.muted(`${service.repository}:${service.tag}`)} `
+            + `${c.dim(shortDigest(service.currentDigest))}`,
+        );
+
+    }
+
+    let watch: RolloutWatchState = initialWatchState(watched);
+    const seenEventKeys = new Set<string>();
+    let historySeeded = false;
+    const lastStates = Object.fromEntries(watched.map((service) => [service.name, service.state]));
+
+    // Seed seen events so we only stream fresh ones after watch start.
+    try {
+
+        const history = await opts.client.history();
+
+        for (const event of history.events) {
+
+            seenEventKeys.add(eventKey(event));
+
+        }
+
+        historySeeded = true;
+
+    } catch (err) {
+
+        const msg = err instanceof Error ? err.message : String(err);
+
+        console.error(`${TAG} ${c.warning(`history seed failed: ${msg} — will seed on next successful poll`)}`);
+
+    }
+
+    if (opts.forceCheck) {
+
+        console.log(`${TAG} ${c.muted('POST /v1/forceCheck')}`);
+
+        try {
+
+            await opts.client.forceCheck();
+            console.log(`${TAG} ${c.success('forceCheck accepted')}`);
+
+        } catch (err) {
+
+            const msg = err instanceof Error ? err.message : String(err);
+
+            gh.error(msg, {title: 'castwatch: forceCheck failed'});
+            console.error(c.error(msg));
+            return 1;
+
+        }
+
+    } else {
+
+        console.log(`${TAG} ${c.muted('watching only (--no-force-check)')}`);
+
+    }
+
     const onSigint = (): void => {
 
         process.exit(130);
 
-};
+    };
 
     process.on('SIGINT', onSigint);
-    console.log(`${TAG} ${c.muted('waiting for digest change (use --once for snapshot, Ctrl-C to stop)')}`);
 
     while (true) {
 
+        if (now() - startedAt > timeoutMs) {
+
+            const msg = `Timed out after ${Math.round(timeoutMs / 1000)}s waiting for Castellan rollout`;
+
+            gh.error(msg, {title: 'castwatch: timeout'});
+            console.error(c.error(msg));
+            return 1;
+
+        }
+
+        let services: ServiceStatus[];
+        let events: DeploymentEvent[] = [];
+
         try {
 
-            stack = await describeStack(ctx);
+            const [statusResp, historyResp] = await Promise.all([
+                opts.client.status(),
+                opts.client.history(),
+            ]);
 
-} catch (err) {
+            services = statusResp.services.filter((service) => watchedNames.has(service.name));
+            events = historyResp.events;
+
+        } catch (err) {
 
             const msg = err instanceof Error ? err.message : String(err);
 
-            console.error(`${TAG} ${c.warning(`describe failed: ${msg}`)}`);
-            await sleep(POLL_MS);
+            console.error(`${TAG} ${c.warning(`poll failed: ${msg}`)}`);
+            await sleep(pollMs);
             continue;
 
-}
+        }
 
-        const digests = watchedDigests(stack);
+        // If the initial history seed failed, mark everything currently in
+        // history as seen without applying it — otherwise stale failure/rollback
+        // events from prior deploys can false-fail this CI run.
+        if (!historySeeded) {
 
-        rollout = nextRolloutState(rollout, digests);
+            for (const event of events) {
 
-        const sig = progressSignature(stack, rollout);
-        const outcome = evaluateRollout(stack, rollout);
+                seenEventKeys.add(eventKey(event));
 
-        if (sig !== lastSig) {
+            }
 
-            printProgress(stack, rollout, outcome.kind === 'pending' ? outcome.reason : outcome.kind);
-            lastSig = sig;
+            historySeeded = true;
+            console.log(`${TAG} ${c.muted('seeded history after poll recovery (prior events ignored)')}`);
 
-}
+        }
+
+        const fresh = events
+            .filter((event) => watchedNames.has(event.service) && !seenEventKeys.has(eventKey(event)))
+            .sort((a, b) => a.at.localeCompare(b.at));
+
+        for (const event of fresh) {
+
+            seenEventKeys.add(eventKey(event));
+            console.log(
+                `  ${TAG} ${colorEventType(event.type)} ${c.fg(event.service)} ${colorEventMessage(event)}`,
+            );
+
+        }
+
+        watch = noteEvents(watch, fresh, watchedNames);
+        watch = noteStatus(watch, services);
+
+        for (const service of services) {
+
+            const prev = lastStates[service.name];
+
+            if (prev !== service.state) {
+
+                console.log(
+                    `${TAG} ${c.fg(service.name)} ${colorServiceState(service.state)} `
+                    + `${c.dim(shortDigest(service.currentDigest))}${
+                     service.desiredDigest && service.desiredDigest !== service.currentDigest
+                        ? ` ${c.muted('→')} ${c.dim(shortDigest(service.desiredDigest))}`
+                        : ''}`,
+                );
+                lastStates[service.name] = service.state;
+
+            }
+
+        }
+
+        const outcome = evaluateRollout(watch, services);
 
         if (outcome.kind === 'success') {
 
-            console.log('');
-            printSnapshot(stack, ctx);
-            gh.notice(`Rollout complete on ${ctx.env}`, {title: 'composewatch: rollout complete'});
-            process.removeListener('SIGINT', onSigint);
+            console.log(`${c.success('==>')} Rollout settled healthy`);
+            gh.notice('Castellan rollout settled healthy', {title: 'castwatch'});
+            process.off('SIGINT', onSigint);
             return 0;
 
-}
-        if (outcome.kind === 'failed') {
+        }
 
-            console.log('');
-            console.error(c.error(`Rollout failed: ${outcome.reason}`));
-            await emitFailureReport(ctx, stack);
-            process.removeListener('SIGINT', onSigint);
+        if (outcome.kind === 'failure') {
+
+            gh.error(outcome.reason, {title: 'castwatch: rollout failed'});
+            console.error(`${c.error('==>')} ${outcome.reason}`);
+            process.off('SIGINT', onSigint);
             return 1;
 
-}
+        }
 
-        await sleep(POLL_MS);
+        await sleep(pollMs);
 
-}
-
-}
-
-function progressSignature(stack: StackSnapshot, state: RolloutWatchState): string {
-
-    const watched = stack.containers.filter((c) => c.watched);
-
-    return [
-        state.sawDigestChange ? '1' : '0',
-        state.digestsStable ? '1' : '0',
-        ...watched.map((c) => `${c.service}:${c.imageId}:${c.state}:${c.health}:${c.restartCount}`),
-    ].join('|');
+    }
 
 }
 
-function printProgress(stack: StackSnapshot, state: RolloutWatchState, reason: string): void {
+function eventKey(event: DeploymentEvent): string {
 
-    const watched = stack.containers.filter((c) => c.watched);
-    const healthy = watched.filter((c) => c.state === 'running' && c.health !== 'unhealthy' && c.health !== 'starting').length;
-    const phase = !state.sawDigestChange ? 'waiting'
-        : !state.digestsStable ? 'pulling'
-            : 'settling';
-
-    console.log(
-        `  ${TAG} ${colorRolloutKind(phase === 'settling' ? 'deploying' : 'pending')} `
-        + `${c.fg(`${healthy}/${watched.length}`)} healthy  ${c.muted(reason)}`,
-    );
+    return `${event.at}|${event.type}|${event.service}|${event.message}`;
 
 }
 
-function printSnapshot(stack: StackSnapshot, ctx: CliContext): void {
+function colorEventMessage(event: DeploymentEvent): string {
 
-    console.log(c.accent('━'.repeat(60)));
-    console.log(`${c.muted('env:')}        ${c.fg(ctx.env)}`);
-    console.log(`${c.muted('ssh:')}        ${c.fg(ctx.ssh)}`);
-    console.log(`${c.muted('dir:')}        ${c.fg(ctx.dir)}`);
-    console.log(`${c.muted('project:')}    ${c.fg(stack.project)}`);
-    console.log(`${c.muted('healthy:')}    ${pill(stackHealthy(stack) ? 'yes' : 'no', stackHealthy(stack) ? 'success' : 'error')}`);
-    console.log(c.accent('━'.repeat(60)));
-    console.log(c.muted('Watched services:'));
-    for (const ctn of stack.containers.filter((x) => x.watched)) {
+    if (event.type === 'failure' || event.type === 'rollback') {
 
-        const health = ctn.health === 'none' ? '—' : ctn.health;
+        return c.warning(event.message);
 
-        console.log(
-            `  ${colorStatusMessage(ctn.service.padEnd(16))} ${c.fg(ctn.state.padEnd(10))} `
-            + `${c.muted(health.padEnd(10))} ${c.dim(ctn.imageId)}  ${c.muted(ctn.status)}`,
-        );
+    }
+
+    return c.muted(event.message);
 
 }
 
-}
+function defaultSleep(ms: number): Promise<void> {
 
-async function emitFailureReport(ctx: CliContext, stack: StackSnapshot): Promise<void> {
+    return new Promise((resolve) => {
 
-    gh.error(`${ctx.env} compose rollout FAILED`, {title: 'composewatch: rollout failed'});
-    printSnapshot(stack, ctx);
+        setTimeout(resolve, ms);
 
-    let logs: LogLine[] = [];
-
-    await gh.withGroup('composewatch: recent logs', async () => {
-
-        try {
-
-            logs = await tailLogs(ctx, {tail: 80, services: ctx.watchedServices});
-            if (logs.length === 0) {
-
-                console.log(c.muted('  (no log lines)'));
-                return;
-
-}
-            for (const line of logs.slice(-60)) {
-
-                const stamp = c.dim(line.timestamp.toISOString().slice(11, 19));
-                const colored = line.severity === 'error' ? c.error(line.message)
-                    : line.severity === 'warn' ? c.warning(line.message)
-                        : c.fg(line.message);
-
-                console.log(`  ${stamp}  ${c.muted(line.stream)}  ${colored}`);
-
-}
-
-} catch (err) {
-
-            console.log(c.dim(`  (could not tail logs: ${err instanceof Error ? err.message : String(err)})`));
-
-}
-
-});
-
-    const diagnostics = analyzeWithExpected(stack, ctx.watchedServices);
-
-    await gh.withGroup('composewatch: diagnostics', async () => {
-
-        if (diagnostics.length === 0) {
-
-            console.log(c.muted('  (no diagnostics matched)'));
-            return;
-
-}
-        for (const d of diagnostics) {
-
-            const tag = d.severity === 'error' ? c.error('[ERROR]')
-                : d.severity === 'warn' ? c.warning('[WARN]') : c.info('[INFO]');
-
-            console.log(`  ${tag} ${c.fg(d.title)}`);
-            console.log(`    ${c.muted(d.detail)}`);
-            if (d.suggestion) console.log(`    ${c.info(`→ ${d.suggestion}`)}`);
-
-}
-
-});
-
-    await gh.withGroup('composewatch: root cause analysis', async () => {
-
-        const analysis = rootCause({stack, diagnostics});
-
-        console.log(`  ${pill('HEURISTIC', 'warning')} ${c.muted(`(${analysis.elapsedMs}ms)`)}`);
-        console.log(`  ${c.accent('SUMMARY:')} ${c.fg(analysis.summary)}`);
-        for (const cause of analysis.likelyCauses) console.log(`    ${c.warning('•')} ${c.fg(cause)}`);
-        for (const fix of analysis.suggestedFixes) console.log(`    ${c.success('•')} ${c.fg(fix)}`);
-
-});
-
-}
-
-function sleep(ms: number): Promise<void> {
-
-    return new Promise((r) => setTimeout(r, ms));
+    });
 
 }

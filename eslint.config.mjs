@@ -1,5 +1,4 @@
 import tseslint from 'typescript-eslint';
-import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
     {
@@ -7,18 +6,12 @@ export default tseslint.config(
     },
     ...tseslint.configs.recommended,
     {
-        files: ['**/*.ts', '**/*.tsx', '**/*.js'],
-        plugins: {'react-hooks': reactHooks},
+        files: ['**/*.ts', '**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module',
-            parserOptions: {
-                ecmaFeatures: {jsx: true},
-            },
         },
         rules: {
-            'react-hooks/rules-of-hooks': 'error',
-            'react-hooks/exhaustive-deps': 'warn',
             'array-bracket-spacing': 'error',
             'array-callback-return': 'error',
             'arrow-body-style': ['error', 'as-needed'],
@@ -88,8 +81,6 @@ export default tseslint.config(
             'no-undef': 'off',
             'no-underscore-dangle': 'error',
             'no-unneeded-ternary': 'error',
-            'no-useless-computed-key': 'error',
-            'no-useless-escape': 'error',
             'no-var': 'error',
             'no-whitespace-before-property': 'error',
             'object-curly-spacing': ['error', 'never'],
@@ -129,20 +120,9 @@ export default tseslint.config(
             '@typescript-eslint/no-require-imports': 'error',
             '@typescript-eslint/no-unused-vars': ['error', {vars: 'all', args: 'after-used', ignoreRestSiblings: true}],
             '@typescript-eslint/no-use-before-define': ['error', {functions: false, classes: false}],
-            // brek requires return types everywhere; the modern convention is to
-            // require them on declarations but let inline callbacks/expressions
-            // infer (avoids noise on event handlers, .map callbacks, etc.).
             '@typescript-eslint/explicit-function-return-type': ['error', {allowExpressions: true}],
             '@typescript-eslint/no-explicit-any': 'off',
             '@typescript-eslint/no-empty-object-type': 'off',
-        },
-    },
-    {
-        // React/Ink components and hooks return inferred JSX/state; explicit
-        // return types add noise without value here.
-        files: ['**/*.tsx'],
-        rules: {
-            '@typescript-eslint/explicit-function-return-type': 'off',
         },
     },
 );

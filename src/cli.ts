@@ -1,187 +1,89 @@
-// CLI entry point for `composewatch`.
-//
-// Subcommands:
-//   watch     live monitor — TUI by default, CI streaming in CI
-//   inspect   rich one-shot snapshot
-//   ci        force CI streaming mode
-//   tui       force interactive TUI
-//
-// Host resolution: --env <name> → ~/.config/composewatch/config.json
-// Override with --ssh / COMPOSEWATCH_SSH.
-
+#!/usr/bin/env node
 import {Command} from 'commander';
-
+import {
+    CastellanClient,
+    resolveCastellanToken,
+    resolveCastellanUrl,
+} from './castellan/client.js';
 import {runCi} from './modes/ci.js';
-import {runSnapshot} from './modes/snapshot.js';
-import {runTui} from './modes/tui.js';
-import {defaultConfigPath, resolveHost} from './resolve/hostResolver.js';
 import {c} from './theme.js';
-import type {CliContext} from './types.js';
 
-interface GlobalOpts {
-    env?: string;
-    ssh?: string;
-    dir?: string;
-    composeFile?: string;
-    envFile?: string;
-    watched?: string;
+type CiCliOpts = {
+    url?: string;
+    token?: string;
+    forceCheck: boolean;
+    pollMs: string;
+    timeoutMs: string;
+};
+
+function parsePositiveInt(raw: string, flag: string): number {
+
+    const value = Number(raw);
+
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+
+        throw new Error(`${flag} must be a positive integer (got ${JSON.stringify(raw)})`);
+
+    }
+
+    return value;
+
 }
 
-interface WatchCmdOpts {
-    once?: boolean;
-    forceCi?: boolean;
-    forceTui?: boolean;
-}
+async function runCiCommand(services: string[], opts: CiCliOpts): Promise<void> {
 
-async function resolveContext(opts: GlobalOpts): Promise<CliContext> {
+    if (services.length === 0) {
 
-    const watched = opts.watched
-        ? opts.watched.split(',').map((s) => s.trim()).filter(Boolean)
-        : undefined;
+        throw new Error('At least one service name is required');
 
-    return resolveHost({
-        env: opts.env,
-        ssh: opts.ssh,
-        dir: opts.dir,
-        composeFile: opts.composeFile,
-        envFile: opts.envFile,
-        watched,
+    }
+
+    const baseUrl = resolveCastellanUrl(opts.url);
+    const authToken = resolveCastellanToken(opts.token);
+    const client = new CastellanClient({baseUrl, authToken});
+    const code = await runCi({
+        client,
+        serviceQueries: services,
+        forceCheck: opts.forceCheck,
+        pollMs: parsePositiveInt(opts.pollMs, '--poll-ms'),
+        timeoutMs: parsePositiveInt(opts.timeoutMs, '--timeout-ms'),
     });
 
-}
-
-async function contextOrExit(opts: GlobalOpts): Promise<CliContext | null> {
-
-    try {
-
-        const ctx = await resolveContext(opts);
-
-        process.stderr.write(
-            `${c.dim(`env ${ctx.env} · ${ctx.ssh} · ${ctx.dir}`)}\n`,
-        );
-        return ctx;
-
-} catch (err) {
-
-        console.error(c.error(err instanceof Error ? err.message : String(err)));
-        process.exitCode = 1;
-        return null;
+    process.exitCode = code;
 
 }
 
-}
+const program = new Command();
 
-async function main(): Promise<void> {
+program
+    .name('castwatch')
+    .description('Watch Castellan compose rollouts over HTTP (CI streaming).')
+    .version('0.0.0-autorel');
 
-    const program = new Command();
+program
+    .command('ci', {isDefault: true})
+    .description('Stream Castellan rollout status until settle or failure (CI gate)')
+    .argument('<services...>', 'Castellan service name(s) or repository basename (e.g. api, api-service)')
+    .option('--url <url>', 'Castellan base URL (or CASTELLAN_URL)')
+    .option('--token <token>', 'Bearer token (or CASTELLAN_AUTH_TOKEN)')
+    .option('--no-force-check', 'Do not POST /v1/forceCheck; only watch')
+    .option('--poll-ms <ms>', 'Poll interval milliseconds', '5000')
+    .option('--timeout-ms <ms>', 'Overall timeout milliseconds', String(15 * 60_000))
+    .action(async (services: string[], opts: CiCliOpts) => {
 
-    program
-        .name('composewatch')
-        .description(
-            'Docker Compose deploy watcher + TUI over SSH. '
-            + 'Streams plain output in CI; interactive TUI otherwise.',
-        )
-        .option('--env <name>', 'target env name; default COMPOSEWATCH_ENV or config default_env')
-        .option('--ssh <user@host>', 'SSH target (overrides config)')
-        .option('--dir <path>', 'remote compose project directory')
-        .option('--compose-file <file>', 'compose file name (default docker-compose.yml)')
-        .option('--env-file <path>', 'remote docker compose --env-file path (omit when unset in config)')
-        .option('--watched <list>', 'comma-separated watched services')
-        .showHelpAfterError();
+        try {
 
-    program
-        .command('watch')
-        .description('live monitor — TUI in a TTY, streaming output in CI')
-        .option('--once', 'snapshot then exit')
-        .option('--force-ci', 'force CI streaming output even on a TTY')
-        .option('--force-tui', 'force the TUI even when CI=true or stdout is not a TTY')
-        .action(async (cmdOpts: WatchCmdOpts) => {
+            await runCiCommand(services, opts);
 
-            const ctx = await contextOrExit(program.opts<GlobalOpts>());
+        } catch (err) {
 
-            if (!ctx) return;
-            if (cmdOpts.once) {
+            const msg = err instanceof Error ? err.message : String(err);
 
-                process.exitCode = await runCi(ctx, {once: true});
-                return;
+            console.error(c.error(msg));
+            process.exitCode = 1;
 
-}
-            const mode = cmdOpts.forceTui ? 'tui' : cmdOpts.forceCi ? 'ci' : 'auto';
+        }
 
-            if (shouldUseTui(mode)) process.exitCode = await runTui(ctx);
-            else process.exitCode = await runCi(ctx, {once: false});
+    });
 
-});
-
-    program
-        .command('inspect')
-        .description('rich one-shot snapshot (services, digests, health, diagnostics)')
-        .option('--logs <n>', 'tail N recent log lines', (v) => parseInt(v, 10), 0)
-        .action(async (cmdOpts: {logs: number}) => {
-
-            const ctx = await contextOrExit(program.opts<GlobalOpts>());
-
-            if (!ctx) return;
-            process.exitCode = await runSnapshot(ctx, {logLines: cmdOpts.logs});
-
-});
-
-    program
-        .command('ci')
-        .description('force CI streaming mode (same as watch --force-ci)')
-        .action(async () => {
-
-            const ctx = await contextOrExit(program.opts<GlobalOpts>());
-
-            if (!ctx) return;
-            process.exitCode = await runCi(ctx, {once: false});
-
-});
-
-    program
-        .command('tui')
-        .description('force interactive TUI (overrides CI auto-detection)')
-        .action(async () => {
-
-            const ctx = await contextOrExit(program.opts<GlobalOpts>());
-
-            if (!ctx) return;
-            process.exitCode = await runTui(ctx);
-
-});
-
-    program.addHelpText('after', `
-Config: ${defaultConfigPath()}
-Example:
-  {
-    "default_env": "staging",
-    "hosts": {
-      "staging": {
-        "ssh": "deploy@my-server",
-        "dir": "/srv/app/compose",
-        "watched": ["web", "worker"]
-      }
-    }
-  }
-`);
-
-    await program.parseAsync(process.argv);
-
-}
-
-function shouldUseTui(force: 'tui' | 'ci' | 'auto'): boolean {
-
-    if (force === 'tui') return true;
-    if (force === 'ci') return false;
-    if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') return false;
-    if (!process.stdout.isTTY) return false;
-    return true;
-
-}
-
-main().catch((err) => {
-
-    console.error(c.error(err instanceof Error ? err.stack ?? err.message : String(err)));
-    process.exit(1);
-
-});
+await program.parseAsync(process.argv);

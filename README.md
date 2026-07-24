@@ -1,99 +1,95 @@
-# composewatch
+# castwatch
 
-[![next](https://img.shields.io/github/actions/workflow/status/logfoxai/composewatch/release.yml?branch=next&label=next)](https://github.com/logfoxai/composewatch/actions/workflows/release.yml)
-[![release](https://img.shields.io/github/actions/workflow/status/logfoxai/composewatch/release.yml?branch=main&label=release)](https://github.com/logfoxai/composewatch/actions/workflows/release.yml)
+[![release](https://img.shields.io/github/actions/workflow/status/logfoxai/castwatch/release.yml?branch=main&label=release)](https://github.com/logfoxai/castwatch/actions/workflows/release.yml)
 [![SemVer](https://img.shields.io/badge/SemVer-2.0.0-blue)]()
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 [![AutoRel](https://img.shields.io/badge/%F0%9F%9A%80%20AutoRel-2D4DDE)](https://github.com/mhweiner/autorel)
 
-CLI for watching Docker Compose rollouts over SSH. Same modes as [`ecswatch`](https://github.com/logfoxai/ecswatch): CI stream, TUI, and inspect.
+CI CLI for watching [Castellan](https://github.com/logfoxai/castellan) compose rollouts over HTTP. Same role as [`ecswatch`](https://github.com/logfoxai/ecswatch) for ECS: stream deploy progress in GitHub Actions, exit non-zero on failure.
 
-- **CI mode**: waits for watched service digests to change and settle healthy; exits non-zero on restart loops or container exits; emits GitHub Actions annotations.
-- **TUI** (default on a TTY): services, health, digests, diagnostics, log tail over SSH.
-- **Snapshot** (`inspect`): one-shot tabular report.
-- **Remote only**: talks to the host over SSH; no local Docker socket.
+- Talks only to Castellan’s API (`/v1/status`, `/v1/history`, `/v1/forceCheck`) — no SSH, no local Docker socket.
+- Streams Castellan events and service state pills (`checking` / `updating` / `verifying` / `stable` / `rollback` / `failed`).
+- Emits GitHub Actions annotations (`::error::`, `::notice::`).
+- For day-to-day ops, use Castellan’s dashboard — this tool is the CI gate.
 
 ## Install
 
 ```bash
-npm install -g composewatch
+npm install -g castwatch
 ```
 
 From a local checkout:
 
 ```bash
-git clone https://github.com/logfoxai/composewatch.git && cd composewatch
+git clone https://github.com/logfoxai/castwatch.git && cd castwatch
 npm install
 npm link
 ```
 
-## Config
-
-Create `~/.config/composewatch/config.json`:
-
-```json
-{
-  "default_env": "staging",
-  "hosts": {
-    "staging": {
-      "ssh": "deploy@my-server",
-      "dir": "/srv/app/compose",
-      "compose_file": "docker-compose.yml",
-      "env_file": "/srv/app/compose/.env",
-      "watched": ["web", "worker"]
-    },
-    "prod": {
-      "ssh": "deploy@prod.example.com",
-      "dir": "/srv/app/compose",
-      "watched": ["web", "worker", "scheduler"]
-    }
-  }
-}
-```
-
-Required per host (or via flags): `ssh`, `dir`, `watched`.
-
-Optional per host: `compose_file` (default `docker-compose.yml`), `env_file` (omit to skip `--env-file`).
-
-Overrides: `--env`, `--ssh`, `--dir`, `--compose-file`, `--env-file`, `--watched`, `COMPOSEWATCH_ENV`, `COMPOSEWATCH_SSH`.
-
-**Prerequisite:** SSH must reach the host (`BatchMode=yes` — agent keys, Tailscale SSH, etc.).
-
 ## Usage
 
 ```bash
-composewatch watch                 # TUI on a TTY, CI stream in CI
-composewatch inspect               # one-shot snapshot
-composewatch inspect --logs 80     # also tail 80 log lines
-composewatch ci                    # force CI streaming (rollout gate)
-composewatch tui                   # force interactive TUI
-composewatch watch --once          # snapshot then exit
-composewatch watch --env staging
-composewatch inspect --ssh deploy@my-server --dir /srv/app/compose --watched web,worker
+export CASTELLAN_URL=http://castellan.example:8443
+export CASTELLAN_AUTH_TOKEN=…
+
+# Force a registry check, then stream until settle (default)
+castwatch ci api-service
+
+# Watch only (something else already called forceCheck)
+castwatch ci api-service --no-force-check
+
+# Multiple services
+castwatch ci api ingest-worker issue-worker
 ```
 
-### CI exit codes
+Service args match Castellan’s managed service **name**, or the image **repository basename** (e.g. `api-service` resolves to Castellan service `api` when that service’s repository ends in `api-service`).
+
+### Options
+
+| Flag | Env | Default | Meaning |
+| --- | --- | --- | --- |
+| `--url` | `CASTELLAN_URL` | required | Castellan base URL |
+| `--token` | `CASTELLAN_AUTH_TOKEN` | required | Bearer token |
+| `--no-force-check` | — | forceCheck on | Skip `POST /v1/forceCheck` |
+| `--poll-ms` | — | `5000` | Poll interval |
+| `--timeout-ms` | — | `900000` (15m) | Overall timeout |
+
+### Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Rollout success (digest changed, settled, watched services healthy) — or `--once` / `inspect` with no error diagnostics |
-| `1` | SSH/host failure, rollout failed, or inspect found error diagnostics |
-| `130` | SIGINT during CI watch |
+| `0` | Watched services settled `stable` on a new digest |
+| `1` | Unreachable API, unknown service, `forceCheck` error, failed/rollback, or timeout |
+| `130` | SIGINT |
 
-### Rollout signal
+### Success / failure signal
 
-CI tracks **image IDs** of watched services:
+Castellan-native:
 
-1. Capture baseline digests
-2. Wait until at least one watched digest changes (deploy happened)
-3. Wait until digests stop changing and every watched service is `running` and not `unhealthy`/`starting`
-4. Fail early on `exited` / `restarting` / high restart counts during the rollout
+1. Capture baseline digests from `/v1/status`
+2. Optionally `forceCheck`
+3. Stream new `/v1/history` events and state transitions
+4. **Success** when every watched service saw deploy activity and settled `stable`/`idle` with `currentDigest ≠ baseline`
+5. **Failure** on `failed` state, failure events, or rollback that ends on the baseline digest
 
-Works with any deploy path that updates running container digests (manual `compose pull`, a deploy controller, etc.).
+## CI example
 
-## Follow-ups (not in v1)
+```yaml
+- name: Connect Tailscale
+  uses: tailscale/github-action@v3
+  with:
+    oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+    oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+    tags: tag:ci
 
-- Optional root-cause analysis (copy from ecswatch)
+- name: Deploy + watch
+  env:
+    CASTELLAN_URL: http://castellan.prime.logfox.ai:8443
+    CASTELLAN_AUTH_TOKEN: ${{ /* from Secrets Manager or env */ }}
+  run: |
+    deploy-compose-service api-service "$VERSION" "$PWD"
+    castwatch ci api-service
+```
 
 ## Develop
 
