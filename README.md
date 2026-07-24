@@ -1,6 +1,5 @@
 # castwatch
 
-[![release](https://img.shields.io/github/actions/workflow/status/logfoxai/castwatch/release.yml?branch=main&label=release)](https://github.com/logfoxai/castwatch/actions/workflows/release.yml)
 [![SemVer](https://img.shields.io/badge/SemVer-2.0.0-blue)]()
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 [![AutoRel](https://img.shields.io/badge/%F0%9F%9A%80%20AutoRel-2D4DDE)](https://github.com/mhweiner/autorel)
@@ -97,6 +96,19 @@ Castellan-native:
 npm run validate   # lint + typecheck + build + test
 npm run dev        # esbuild watch
 ```
+
+## Publishing
+
+Releases use [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) from `.github/workflows/release.yml` — same model as [`ecswatch`](https://github.com/logfoxai/ecswatch). There is no `NPM_TOKEN` secret.
+
+npm cannot create a brand-new package name via OIDC. One-time bootstrap (as the npm owner, currently `mhweiner`):
+
+1. `npm login` and publish an initial version (or a `0.0.0` stub) so `castwatch` exists on the registry.
+2. On [npm package access](https://www.npmjs.com/package/castwatch/access), add a Trusted Publisher:
+   - GitHub org/user: `logfoxai`
+   - Repository: `castwatch`
+   - Workflow filename: `release.yml`
+3. Re-run Release on `main` (`workflow_dispatch` or merge a conventional commit).
 
 ## License
 
