@@ -1,14 +1,48 @@
-# castellan-cli
+<div align="center">
+  <picture>
+    <source srcset="assets/castellan-lockup-light.svg" media="(prefers-color-scheme: light)" />
+    <source srcset="assets/castellan-lockup-dark.svg" media="(prefers-color-scheme: dark)" />
+    <img src="assets/castellan-lockup-dark.svg" alt="Castellan" />
+  </picture>
 
-[![SemVer](https://img.shields.io/badge/SemVer-2.0.0-blue)]()
-[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
-[![AutoRel](https://img.shields.io/badge/%F0%9F%9A%80%20AutoRel-2D4DDE)](https://github.com/mhweiner/autorel)
+  <p><strong>Official CLI</strong></p>
 
-Official CLI for [Castellan](https://github.com/logfoxai/castellan).
+  <p>
+    <img src="https://img.shields.io/badge/SemVer-2.0.0-blue" alt="SemVer" />
+    <img src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg" alt="Conventional Commits" />
+    <a href="https://github.com/mhweiner/autorel"><img src="https://img.shields.io/badge/%F0%9F%9A%80%20AutoRel-2D4DDE" alt="AutoRel" /></a>
+    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+  </p>
 
-Trigger a registry check, stream rollout events, and wait until managed services settle healthy — or fail the process when Castellan rolls back.
+  <p>
+    Trigger a registry check, stream rollout events, and wait until services settle —
+    or fail the process when Castellan rolls back.
+  </p>
+</div>
 
-For day-to-day ops, use Castellan’s dashboard. Use this CLI in automation (GitHub Actions, scripts) when you need a gate after pushing a new image digest.
+# Crash course
+
+[`castellan-cli`](https://www.npmjs.com/package/castellan-cli) is the command-line companion to [Castellan](https://github.com/logfoxai/castellan) — the compose deploy controller with health checks, rollback, and a dashboard.
+
+Use the **dashboard** for day-to-day ops. Use this CLI in **automation** (GitHub Actions, scripts) when you need a hard gate after pushing a new image digest.
+
+```bash
+export CASTELLAN_URL=http://castellan.example:8443
+export CASTELLAN_AUTH_TOKEN=…
+
+castellan-cli api-service
+```
+
+```text
+==> Watching Castellan services: api-service
+[castellan] POST /v1/forceCheck
+[castellan] forceCheck accepted
+[castellan]  DEPLOY  api  pulling sha256:f6e5d4…
+[castellan] api  UPDATING  a1b2c3d4e5f6 → f6e5d4c3b2a1
+[castellan] api  VERIFYING  f6e5d4c3b2a1
+[castellan] api  STABLE  f6e5d4c3b2a1
+==> Rollout settled healthy
+```
 
 ## Install
 
