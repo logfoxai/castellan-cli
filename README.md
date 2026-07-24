@@ -20,7 +20,7 @@
   </p>
 </div>
 
-# Crash course
+# Get started
 
 [`castellan-cli`](https://www.npmjs.com/package/castellan-cli) is the command-line companion to [Castellan](https://github.com/logfoxai/castellan) — the compose deploy controller with health checks, rollback, and a dashboard.
 
