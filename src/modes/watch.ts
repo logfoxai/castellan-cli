@@ -1,4 +1,4 @@
-// CI/streaming mode for Castellan rollouts (ecswatch-shaped):
+// Watch mode for Castellan rollouts:
 //
 //   1. Resolve services via Castellan /v1/status
 //   2. Optionally POST /v1/forceCheck
@@ -22,7 +22,7 @@ const DEFAULT_POLL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 const TAG = c.accent('[castellan]');
 
-export type CiOptions = {
+export type WatchOptions = {
     client: CastellanClient;
     serviceQueries: string[];
     forceCheck: boolean;
@@ -32,7 +32,7 @@ export type CiOptions = {
     sleep?: (ms: number) => Promise<void>;
 };
 
-export async function runCi(opts: CiOptions): Promise<number> {
+export async function runWatch(opts: WatchOptions): Promise<number> {
 
     const pollMs = opts.pollMs ?? DEFAULT_POLL_MS;
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -53,7 +53,7 @@ export async function runCi(opts: CiOptions): Promise<number> {
 
         const msg = err instanceof Error ? err.message : String(err);
 
-        gh.error(msg, {title: 'castwatch: Castellan unreachable'});
+        gh.error(msg, {title: 'castellan-cli: Castellan unreachable'});
         console.error(c.error(msg));
         return 1;
 
@@ -75,7 +75,7 @@ export async function runCi(opts: CiOptions): Promise<number> {
 
         const msg = err instanceof Error ? err.message : String(err);
 
-        gh.error(msg, {title: 'castwatch: ambiguous service'});
+        gh.error(msg, {title: 'castellan-cli: ambiguous service'});
         console.error(c.error(msg));
         return 1;
 
@@ -86,7 +86,7 @@ export async function runCi(opts: CiOptions): Promise<number> {
         const known = status.services.map((service) => service.name).sort().join(', ') || '(none)';
         const msg = `Unknown Castellan service(s): ${resolved.missing.join(', ')}. Known: ${known}`;
 
-        gh.error(msg, {title: 'castwatch: service not found'});
+        gh.error(msg, {title: 'castellan-cli: service not found'});
         console.error(c.error(msg));
         return 1;
 
@@ -144,7 +144,7 @@ export async function runCi(opts: CiOptions): Promise<number> {
 
             const msg = err instanceof Error ? err.message : String(err);
 
-            gh.error(msg, {title: 'castwatch: forceCheck failed'});
+            gh.error(msg, {title: 'castellan-cli: forceCheck failed'});
             console.error(c.error(msg));
             return 1;
 
@@ -170,7 +170,7 @@ export async function runCi(opts: CiOptions): Promise<number> {
 
             const msg = `Timed out after ${Math.round(timeoutMs / 1000)}s waiting for Castellan rollout`;
 
-            gh.error(msg, {title: 'castwatch: timeout'});
+            gh.error(msg, {title: 'castellan-cli: timeout'});
             console.error(c.error(msg));
             return 1;
 
@@ -255,7 +255,7 @@ export async function runCi(opts: CiOptions): Promise<number> {
         if (outcome.kind === 'success') {
 
             console.log(`${c.success('==>')} Rollout settled healthy`);
-            gh.notice('Castellan rollout settled healthy', {title: 'castwatch'});
+            gh.notice('Castellan rollout settled healthy', {title: 'castellan-cli'});
             process.off('SIGINT', onSigint);
             return 0;
 
@@ -263,7 +263,7 @@ export async function runCi(opts: CiOptions): Promise<number> {
 
         if (outcome.kind === 'failure') {
 
-            gh.error(outcome.reason, {title: 'castwatch: rollout failed'});
+            gh.error(outcome.reason, {title: 'castellan-cli: rollout failed'});
             console.error(`${c.error('==>')} ${outcome.reason}`);
             process.off('SIGINT', onSigint);
             return 1;

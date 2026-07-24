@@ -5,10 +5,10 @@ import {
     resolveCastellanToken,
     resolveCastellanUrl,
 } from './castellan/client.js';
-import {runCi} from './modes/ci.js';
+import {runWatch} from './modes/watch.js';
 import {c} from './theme.js';
 
-type CiCliOpts = {
+type WatchCliOpts = {
     url?: string;
     token?: string;
     forceCheck: boolean;
@@ -30,7 +30,7 @@ function parsePositiveInt(raw: string, flag: string): number {
 
 }
 
-async function runCiCommand(services: string[], opts: CiCliOpts): Promise<void> {
+async function runWatchCommand(services: string[], opts: WatchCliOpts): Promise<void> {
 
     if (services.length === 0) {
 
@@ -41,7 +41,7 @@ async function runCiCommand(services: string[], opts: CiCliOpts): Promise<void> 
     const baseUrl = resolveCastellanUrl(opts.url);
     const authToken = resolveCastellanToken(opts.token);
     const client = new CastellanClient({baseUrl, authToken});
-    const code = await runCi({
+    const code = await runWatch({
         client,
         serviceQueries: services,
         forceCheck: opts.forceCheck,
@@ -56,24 +56,20 @@ async function runCiCommand(services: string[], opts: CiCliOpts): Promise<void> 
 const program = new Command();
 
 program
-    .name('castwatch')
-    .description('Watch Castellan compose rollouts over HTTP (CI streaming).')
-    .version('0.0.0-autorel');
-
-program
-    .command('ci', {isDefault: true})
-    .description('Stream Castellan rollout status until settle or failure (CI gate)')
+    .name('castellan-cli')
+    .description('Official CLI for Castellan — trigger rollouts and watch them settle.')
+    .version('0.0.0-autorel')
     .argument('<services...>', 'Castellan service name(s) or repository basename (e.g. api, api-service)')
     .option('--url <url>', 'Castellan base URL (or CASTELLAN_URL)')
     .option('--token <token>', 'Bearer token (or CASTELLAN_AUTH_TOKEN)')
     .option('--no-force-check', 'Do not POST /v1/forceCheck; only watch')
     .option('--poll-ms <ms>', 'Poll interval milliseconds', '5000')
     .option('--timeout-ms <ms>', 'Overall timeout milliseconds', String(15 * 60_000))
-    .action(async (services: string[], opts: CiCliOpts) => {
+    .action(async (services: string[], opts: WatchCliOpts) => {
 
         try {
 
-            await runCiCommand(services, opts);
+            await runWatchCommand(services, opts);
 
         } catch (err) {
 
