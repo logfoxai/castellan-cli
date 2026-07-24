@@ -83,7 +83,7 @@ export class CastellanClient {
 
 export function resolveCastellanUrl(flag?: string): string {
 
-    const url = (flag ?? process.env.CASTELLAN_URL)?.replace(/\/$/, '');
+    const url = (flag ?? process.env.CASTELLAN_URL)?.trim().replace(/\/$/, '');
 
     if (!url) {
 

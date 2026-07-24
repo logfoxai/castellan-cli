@@ -107,6 +107,7 @@ export async function runCi(opts: CiOptions): Promise<number> {
 
     let watch: RolloutWatchState = initialWatchState(watched);
     const seenEventKeys = new Set<string>();
+    let historySeeded = false;
     const lastStates = Object.fromEntries(watched.map((service) => [service.name, service.state]));
 
     // Seed seen events so we only stream fresh ones after watch start.
@@ -120,11 +121,13 @@ export async function runCi(opts: CiOptions): Promise<number> {
 
         }
 
+        historySeeded = true;
+
     } catch (err) {
 
         const msg = err instanceof Error ? err.message : String(err);
 
-        console.error(`${TAG} ${c.warning(`history seed failed: ${msg}`)}`);
+        console.error(`${TAG} ${c.warning(`history seed failed: ${msg} — will seed on next successful poll`)}`);
 
     }
 
@@ -193,6 +196,22 @@ export async function runCi(opts: CiOptions): Promise<number> {
             console.error(`${TAG} ${c.warning(`poll failed: ${msg}`)}`);
             await sleep(pollMs);
             continue;
+
+        }
+
+        // If the initial history seed failed, mark everything currently in
+        // history as seen without applying it — otherwise stale failure/rollback
+        // events from prior deploys can false-fail this CI run.
+        if (!historySeeded) {
+
+            for (const event of events) {
+
+                seenEventKeys.add(eventKey(event));
+
+            }
+
+            historySeeded = true;
+            console.log(`${TAG} ${c.muted('seeded history after poll recovery (prior events ignored)')}`);
 
         }
 

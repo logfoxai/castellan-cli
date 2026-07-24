@@ -20,6 +20,15 @@ test('resolveCastellanUrl requires value', (assert) => {
 
 });
 
+test('resolveCastellanUrl trims whitespace and trailing slash', (assert) => {
+
+    assert.equal(
+        resolveCastellanUrl('  http://castellan.test:8443/  '),
+        'http://castellan.test:8443',
+    );
+
+});
+
 test('resolveCastellanToken requires value', (assert) => {
 
     const previous = process.env.CASTELLAN_AUTH_TOKEN;

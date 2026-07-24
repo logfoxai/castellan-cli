@@ -16,6 +16,20 @@ type CiCliOpts = {
     timeoutMs: string;
 };
 
+function parsePositiveInt(raw: string, flag: string): number {
+
+    const value = Number(raw);
+
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+
+        throw new Error(`${flag} must be a positive integer (got ${JSON.stringify(raw)})`);
+
+    }
+
+    return value;
+
+}
+
 async function runCiCommand(services: string[], opts: CiCliOpts): Promise<void> {
 
     if (services.length === 0) {
@@ -31,8 +45,8 @@ async function runCiCommand(services: string[], opts: CiCliOpts): Promise<void> 
         client,
         serviceQueries: services,
         forceCheck: opts.forceCheck,
-        pollMs: Number(opts.pollMs),
-        timeoutMs: Number(opts.timeoutMs),
+        pollMs: parsePositiveInt(opts.pollMs, '--poll-ms'),
+        timeoutMs: parsePositiveInt(opts.timeoutMs, '--timeout-ms'),
     });
 
     process.exitCode = code;
