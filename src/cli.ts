@@ -5,12 +5,17 @@ import {
     resolveCastellanToken,
     resolveCastellanUrl,
 } from './castellan/client.js';
+import {runCheck} from './modes/check.js';
+import {runStatus} from './modes/status.js';
 import {runWatch} from './modes/watch.js';
 import {c} from './theme.js';
 
-type WatchCliOpts = {
+type GlobalOpts = {
     url?: string;
     token?: string;
+};
+
+type WatchOpts = GlobalOpts & {
     forceCheck: boolean;
     pollMs: string;
     timeoutMs: string;
@@ -30,26 +35,37 @@ function parsePositiveInt(raw: string, flag: string): number {
 
 }
 
-async function runWatchCommand(services: string[], opts: WatchCliOpts): Promise<void> {
+function clientFrom(opts: GlobalOpts): CastellanClient {
 
-    if (services.length === 0) {
-
-        throw new Error('At least one service name is required');
-
-    }
-
-    const baseUrl = resolveCastellanUrl(opts.url);
-    const authToken = resolveCastellanToken(opts.token);
-    const client = new CastellanClient({baseUrl, authToken});
-    const code = await runWatch({
-        client,
-        serviceQueries: services,
-        forceCheck: opts.forceCheck,
-        pollMs: parsePositiveInt(opts.pollMs, '--poll-ms'),
-        timeoutMs: parsePositiveInt(opts.timeoutMs, '--timeout-ms'),
+    return new CastellanClient({
+        baseUrl: resolveCastellanUrl(opts.url),
+        authToken: resolveCastellanToken(opts.token),
     });
 
-    process.exitCode = code;
+}
+
+function addConnectionOptions(command: Command): Command {
+
+    return command
+        .option('--url <url>', 'Castellan base URL (or CASTELLAN_URL)')
+        .option('--token <token>', 'Bearer token (or CASTELLAN_AUTH_TOKEN)');
+
+}
+
+async function withErrors(fn: () => Promise<void>): Promise<void> {
+
+    try {
+
+        await fn();
+
+    } catch (err) {
+
+        const msg = err instanceof Error ? err.message : String(err);
+
+        console.error(c.error(msg));
+        process.exitCode = 1;
+
+    }
 
 }
 
@@ -58,28 +74,77 @@ const program = new Command();
 program
     .name('castellan-cli')
     .description('Official CLI for Castellan — trigger rollouts and watch them settle.')
-    .version('0.0.0-autorel')
-    .argument('<services...>', 'Castellan service name(s) or repository basename (e.g. api, api-service)')
-    .option('--url <url>', 'Castellan base URL (or CASTELLAN_URL)')
-    .option('--token <token>', 'Bearer token (or CASTELLAN_AUTH_TOKEN)')
-    .option('--no-force-check', 'Do not POST /v1/forceCheck; only watch')
-    .option('--poll-ms <ms>', 'Poll interval milliseconds', '5000')
-    .option('--timeout-ms <ms>', 'Overall timeout milliseconds', String(15 * 60_000))
-    .action(async (services: string[], opts: WatchCliOpts) => {
+    .version('0.0.0-autorel');
 
-        try {
+addConnectionOptions(
+    program
+        .command('watch')
+        .description('Stream rollout status until watched services settle (or fail)')
+        .argument('<services...>', 'Castellan service name(s) or repository basename')
+        .option('--no-force-check', 'Do not POST /v1/forceCheck; only watch')
+        .option('--poll-ms <ms>', 'Poll interval milliseconds', '5000')
+        .option('--timeout-ms <ms>', 'Overall timeout milliseconds', String(15 * 60_000))
+        .action(async (services: string[], opts: WatchOpts) => {
 
-            await runWatchCommand(services, opts);
+            await withErrors(async () => {
 
-        } catch (err) {
+                if (services.length === 0) {
 
-            const msg = err instanceof Error ? err.message : String(err);
+                    throw new Error('At least one service name is required');
 
-            console.error(c.error(msg));
-            process.exitCode = 1;
+                }
 
-        }
+                const code = await runWatch({
+                    client: clientFrom(opts),
+                    serviceQueries: services,
+                    forceCheck: opts.forceCheck,
+                    pollMs: parsePositiveInt(opts.pollMs, '--poll-ms'),
+                    timeoutMs: parsePositiveInt(opts.timeoutMs, '--timeout-ms'),
+                });
 
-    });
+                process.exitCode = code;
+
+            });
+
+        }),
+);
+
+addConnectionOptions(
+    program
+        .command('status')
+        .description('Print a one-shot Castellan status snapshot')
+        .argument('[services...]', 'Optional service filter (name or repository basename)')
+        .action(async (services: string[], opts: GlobalOpts) => {
+
+            await withErrors(async () => {
+
+                const code = await runStatus({
+                    client: clientFrom(opts),
+                    serviceQueries: services,
+                });
+
+                process.exitCode = code;
+
+            });
+
+        }),
+);
+
+addConnectionOptions(
+    program
+        .command('check')
+        .description('POST /v1/forceCheck — ask Castellan to check registries and roll out if needed')
+        .action(async (opts: GlobalOpts) => {
+
+            await withErrors(async () => {
+
+                const code = await runCheck({client: clientFrom(opts)});
+
+                process.exitCode = code;
+
+            });
+
+        }),
+);
 
 await program.parseAsync(process.argv);

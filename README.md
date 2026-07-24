@@ -30,7 +30,7 @@ Use the **dashboard** for day-to-day ops. Use this CLI in **automation** (GitHub
 export CASTELLAN_URL=http://castellan.example:8443
 export CASTELLAN_AUTH_TOKEN=…
 
-castellan-cli api-service
+castellan-cli watch api-service
 ```
 
 ```text
@@ -58,35 +58,53 @@ npm install
 npm link
 ```
 
-## Usage
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `watch <services…>` | Stream status/history until settle (runs `forceCheck` first by default) |
+| `status [services…]` | One-shot status snapshot |
+| `check` | `POST /v1/forceCheck` only — ask Castellan to check registries / roll out |
 
 ```bash
 export CASTELLAN_URL=http://castellan.example:8443
 export CASTELLAN_AUTH_TOKEN=…
 
-# Force a registry check, then stream until settle (default)
-castellan-cli api-service
+# Force a registry check, then stream until settle
+castellan-cli watch api-service
 
-# Watch only (something else already called forceCheck)
-castellan-cli api-service --no-force-check
+# Watch only (something else already called check)
+castellan-cli watch api-service --no-force-check
 
 # Multiple services
-castellan-cli api ingest-worker issue-worker
+castellan-cli watch api ingest-worker issue-worker
+
+# Snapshot
+castellan-cli status
+castellan-cli status api-service
+
+# Kick Castellan without waiting
+castellan-cli check
 ```
 
 Service args match Castellan’s managed service **name**, or the image **repository basename** (e.g. `api-service` resolves to Castellan service `api` when that service’s repository ends in `api-service`).
 
-### Options
+### Shared options
 
-| Flag | Env | Default | Meaning |
-| --- | --- | --- | --- |
-| `--url` | `CASTELLAN_URL` | required | Castellan base URL |
-| `--token` | `CASTELLAN_AUTH_TOKEN` | required | Bearer token |
-| `--no-force-check` | — | forceCheck on | Skip `POST /v1/forceCheck` |
-| `--poll-ms` | — | `5000` | Poll interval |
-| `--timeout-ms` | — | `900000` (15m) | Overall timeout |
+| Flag | Env | Meaning |
+| --- | --- | --- |
+| `--url` | `CASTELLAN_URL` | Castellan base URL (required) |
+| `--token` | `CASTELLAN_AUTH_TOKEN` | Bearer token (required) |
 
-### Exit codes
+### `watch` options
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--no-force-check` | forceCheck on | Skip `POST /v1/forceCheck` |
+| `--poll-ms` | `5000` | Poll interval |
+| `--timeout-ms` | `900000` (15m) | Overall timeout |
+
+### Exit codes (`watch`)
 
 | Code | Meaning |
 | --- | --- |
@@ -122,7 +140,7 @@ Emits GitHub Actions annotations (`::error::`, `::notice::`) when running in Act
     CASTELLAN_AUTH_TOKEN: ${{ /* from Secrets Manager or env */ }}
   run: |
     deploy-compose-service api-service "$VERSION" "$PWD"
-    castellan-cli api-service
+    castellan-cli watch api-service
 ```
 
 ## First npm publish (maintainers)
