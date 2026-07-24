@@ -6,7 +6,7 @@
 //   ci        force CI streaming mode
 //   tui       force interactive TUI
 //
-// Host resolution: --env prime|dev|prod → ~/.config/composewatch/config.json
+// Host resolution: --env <name> → ~/.config/composewatch/config.json
 // Override with --ssh / COMPOSEWATCH_SSH.
 
 import {Command} from 'commander';
@@ -78,14 +78,14 @@ async function main(): Promise<void> {
     program
         .name('composewatch')
         .description(
-            'Docker Compose deploy watcher + TUI over Tailscale SSH. '
+            'Docker Compose deploy watcher + TUI over SSH. '
             + 'Streams plain output in CI; interactive TUI otherwise.',
         )
-        .option('--env <name>', 'target env (prime|dev|prod); default COMPOSEWATCH_ENV or config default_env or prime')
+        .option('--env <name>', 'target env name; default COMPOSEWATCH_ENV or config default_env')
         .option('--ssh <user@host>', 'SSH target (overrides config)')
         .option('--dir <path>', 'remote compose project directory')
         .option('--compose-file <file>', 'compose file name (default docker-compose.yml)')
-        .option('--env-file <path>', 'remote --env-file path (default /opt/logfox/.env)')
+        .option('--env-file <path>', 'remote docker compose --env-file path (omit when unset in config)')
         .option('--watched <list>', 'comma-separated watched services')
         .showHelpAfterError();
 
@@ -154,9 +154,13 @@ async function main(): Promise<void> {
 Config: ${defaultConfigPath()}
 Example:
   {
+    "default_env": "staging",
     "hosts": {
-      "prime": { "ssh": "ubuntu@logfox-prime", "dir": "/opt/logfox/compose" },
-      "prod":  { "ssh": "root@logfox-prod",    "dir": "/opt/logfox/compose" }
+      "staging": {
+        "ssh": "deploy@my-server",
+        "dir": "/srv/app/compose",
+        "watched": ["web", "worker"]
+      }
     }
   }
 `);

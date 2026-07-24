@@ -1,5 +1,4 @@
-// SSH remote exec. Prefer shelling out to `ssh` so we reuse the user's
-// Tailscale MagicDNS + agent keys with zero extra deps on the host.
+// SSH remote exec. Shell out to `ssh` so we reuse the user's keys/agent with zero extra deps on the host.
 
 import {spawn} from 'node:child_process';
 
@@ -55,7 +54,7 @@ export async function sshExec(sshTarget: string, command: string, opts: {timeout
             settled = true;
             child.kill('SIGKILL');
             reject(new SshError(
-                `ssh to ${sshTarget} timed out after ${timeoutMs}ms — is Tailscale up and is the host reachable?`,
+                `ssh to ${sshTarget} timed out after ${timeoutMs}ms — is the host reachable?`,
                 {stdout, stderr, code: -1},
             ));
 

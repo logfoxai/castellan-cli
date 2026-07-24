@@ -6,7 +6,7 @@ export type HealthStatus = 'healthy' | 'unhealthy' | 'starting' | 'none' | 'unkn
 export type ContainerState = 'running' | 'exited' | 'restarting' | 'created' | 'paused' | 'dead' | 'unknown';
 
 export interface ContainerSnapshot {
-    /** Compose service name (e.g. api-1). */
+    /** Compose service name (e.g. web). */
     service: string;
     /** Container name. */
     name: string;
@@ -16,7 +16,7 @@ export interface ContainerSnapshot {
     health: HealthStatus;
     /** Image reference as reported by compose (tag or digest). */
     image: string;
-    /** Image ID / digest from `docker inspect` — used for Watchtower rollout tracking. */
+    /** Image ID / digest from `docker inspect` — used for rollout tracking. */
     imageId: string;
     /** Raw Status string from compose (includes uptime / exit info). */
     status: string;
