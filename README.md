@@ -1,27 +1,25 @@
-# castwatch
+# castellan-cli
 
-[![release](https://img.shields.io/github/actions/workflow/status/logfoxai/castwatch/release.yml?branch=main&label=release)](https://github.com/logfoxai/castwatch/actions/workflows/release.yml)
 [![SemVer](https://img.shields.io/badge/SemVer-2.0.0-blue)]()
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 [![AutoRel](https://img.shields.io/badge/%F0%9F%9A%80%20AutoRel-2D4DDE)](https://github.com/mhweiner/autorel)
 
-CI CLI for watching [Castellan](https://github.com/logfoxai/castellan) compose rollouts over HTTP. Same role as [`ecswatch`](https://github.com/logfoxai/ecswatch) for ECS: stream deploy progress in GitHub Actions, exit non-zero on failure.
+Official CLI for [Castellan](https://github.com/logfoxai/castellan).
 
-- Talks only to Castellan’s API (`/v1/status`, `/v1/history`, `/v1/forceCheck`) — no SSH, no local Docker socket.
-- Streams Castellan events and service state pills (`checking` / `updating` / `verifying` / `stable` / `rollback` / `failed`).
-- Emits GitHub Actions annotations (`::error::`, `::notice::`).
-- For day-to-day ops, use Castellan’s dashboard — this tool is the CI gate.
+Trigger a registry check, stream rollout events, and wait until managed services settle healthy — or fail the process when Castellan rolls back.
+
+For day-to-day ops, use Castellan’s dashboard. Use this CLI in automation (GitHub Actions, scripts) when you need a gate after pushing a new image digest.
 
 ## Install
 
 ```bash
-npm install -g castwatch
+npm install -g castellan-cli
 ```
 
 From a local checkout:
 
 ```bash
-git clone https://github.com/logfoxai/castwatch.git && cd castwatch
+git clone https://github.com/logfoxai/castellan-cli.git && cd castellan-cli
 npm install
 npm link
 ```
@@ -33,13 +31,13 @@ export CASTELLAN_URL=http://castellan.example:8443
 export CASTELLAN_AUTH_TOKEN=…
 
 # Force a registry check, then stream until settle (default)
-castwatch ci api-service
+castellan-cli api-service
 
 # Watch only (something else already called forceCheck)
-castwatch ci api-service --no-force-check
+castellan-cli api-service --no-force-check
 
 # Multiple services
-castwatch ci api ingest-worker issue-worker
+castellan-cli api ingest-worker issue-worker
 ```
 
 Service args match Castellan’s managed service **name**, or the image **repository basename** (e.g. `api-service` resolves to Castellan service `api` when that service’s repository ends in `api-service`).
@@ -68,9 +66,11 @@ Castellan-native:
 
 1. Capture baseline digests from `/v1/status`
 2. Optionally `forceCheck`
-3. Stream new `/v1/history` events and state transitions
+3. Stream new `/v1/history` events and state transitions (`checking` → `updating` → `verifying` → `stable` / `rollback` / `failed`)
 4. **Success** when every watched service saw deploy activity and settled `stable`/`idle` with `currentDigest ≠ baseline`
 5. **Failure** on `failed` state, failure events, or rollback that ends on the baseline digest
+
+Emits GitHub Actions annotations (`::error::`, `::notice::`) when running in Actions.
 
 ## CI example
 
@@ -88,8 +88,21 @@ Castellan-native:
     CASTELLAN_AUTH_TOKEN: ${{ /* from Secrets Manager or env */ }}
   run: |
     deploy-compose-service api-service "$VERSION" "$PWD"
-    castwatch ci api-service
+    castellan-cli api-service
 ```
+
+## First npm publish (maintainers)
+
+Releases use [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) from `.github/workflows/release.yml`. There is no `NPM_TOKEN` secret.
+
+npm cannot create a **new** package name via OIDC alone. Bootstrap once as the npm owner:
+
+1. `npm login` and publish an initial version (or a `0.0.0` stub) so `castellan-cli` exists on the registry.
+2. On [npm package access](https://www.npmjs.com/package/castellan-cli/access), add a Trusted Publisher:
+   - Organization / user: `logfoxai`
+   - Repository: `castellan-cli`
+   - Workflow: `release.yml`
+3. Re-run the Release workflow on `main` (or merge a release-triggering commit).
 
 ## Develop
 
@@ -101,3 +114,7 @@ npm run dev        # esbuild watch
 ## License
 
 MIT
+
+---
+
+<sub>Related: for ECS rollouts, see [`ecswatch`](https://github.com/logfoxai/ecswatch).</sub>

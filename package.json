@@ -1,7 +1,7 @@
 {
-  "name": "castwatch",
+  "name": "castellan-cli",
   "version": "0.0.0-autorel",
-  "description": "CI CLI for watching Castellan compose rollouts over HTTP.",
+  "description": "Official CLI for Castellan — trigger rollouts and watch them settle.",
   "keywords": [
     "castellan",
     "docker",
@@ -15,15 +15,15 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/logfoxai/castwatch.git"
+    "url": "git+https://github.com/logfoxai/castellan-cli.git"
   },
   "bugs": {
-    "url": "https://github.com/logfoxai/castwatch/issues"
+    "url": "https://github.com/logfoxai/castellan-cli/issues"
   },
-  "homepage": "https://github.com/logfoxai/castwatch#readme",
+  "homepage": "https://github.com/logfoxai/castellan-cli#readme",
   "type": "module",
   "bin": {
-    "castwatch": "bin/castwatch"
+    "castellan-cli": "bin/castellan-cli"
   },
   "engines": {
     "node": ">=24"

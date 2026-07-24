@@ -1,4 +1,4 @@
-// Centralised palette — every color in castwatch resolves through this module.
+// Centralised palette — every color in castellan-cli resolves through this module.
 // 24-bit RGB so GitHub Actions web logs match local terminals; chalk degrades.
 
 import chalk, {type ChalkInstance} from 'chalk';
