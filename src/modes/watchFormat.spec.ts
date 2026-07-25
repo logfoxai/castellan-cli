@@ -3,6 +3,7 @@ import {
     digestTransition,
     eventEmoji,
     formatDuration,
+    formatWatchHeartbeat,
     stateEmoji,
 } from './watchFormat.js';
 
@@ -24,6 +25,38 @@ test('formatDuration renders minutes and seconds past a minute', (assert) => {
 test('formatDuration clamps negative input to zero', (assert) => {
 
     assert.equal(formatDuration(-500), '0s');
+
+});
+
+test('formatWatchHeartbeat cycles dots and shows timeout proximity', (assert) => {
+
+    assert.equal(
+        formatWatchHeartbeat({
+            elapsedMs: 45_000,
+            timeoutMs: 15 * 60_000,
+            states: ['UPDATING'],
+            tick: 0,
+        }),
+        '· waiting. UPDATING — 45s elapsed, 14m 15s left',
+    );
+    assert.equal(
+        formatWatchHeartbeat({
+            elapsedMs: 45_000,
+            timeoutMs: 15 * 60_000,
+            states: ['UPDATING'],
+            tick: 1,
+        }),
+        '· waiting.. UPDATING — 45s elapsed, 14m 15s left',
+    );
+    assert.equal(
+        formatWatchHeartbeat({
+            elapsedMs: 45_000,
+            timeoutMs: 15 * 60_000,
+            states: ['UPDATING', 'CHECKING'],
+            tick: 2,
+        }),
+        '· waiting... UPDATING, CHECKING — 45s elapsed, 14m 15s left',
+    );
 
 });
 

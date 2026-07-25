@@ -15,6 +15,26 @@ export function formatDuration(ms: number): string {
 
 }
 
+/**
+ * Idle-poll heartbeat: cycling dots + current state(s) + timeout proximity.
+ * `tick` advances each quiet poll (0 → `.`, 1 → `..`, 2 → `...`, …).
+ */
+export function formatWatchHeartbeat(opts: {
+    elapsedMs: number;
+    timeoutMs: number;
+    states: string[];
+    tick: number;
+}): string {
+
+    const dots = '.'.repeat((Math.max(0, opts.tick) % 3) + 1);
+    const elapsed = formatDuration(opts.elapsedMs);
+    const remaining = formatDuration(Math.max(0, opts.timeoutMs - opts.elapsedMs));
+    const stateLabel = opts.states.length > 0 ? opts.states.join(', ') : 'waiting';
+
+    return `· waiting${dots} ${stateLabel} — ${elapsed} elapsed, ${remaining} left`;
+
+}
+
 /** `from` alone, or `from → to` when the digest advanced. */
 export function digestTransition(from: string | null, to: string | null): string {
 
