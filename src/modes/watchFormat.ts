@@ -1,13 +1,8 @@
 // Pure layout helpers for the watch renderer. Kept free of chalk so the exact
 // strings can be unit-tested; color is applied by the caller in watch.ts.
 
+import type {DeploymentEventType, ServiceState} from '../castellan/types.js';
 import {shortDigest} from '../theme.js';
-
-/** Column width for the state pill — fits ` VERIFYING ` (the longest state). */
-export const STATE_CELL_WIDTH = 11;
-
-/** Column width for the event-type pill — fits ` ROLLBACK ` (the longest type). */
-export const EVENT_CELL_WIDTH = 10;
 
 /** Human duration: `47s` under a minute, `2m 3s` beyond it. */
 export function formatDuration(ms: number): string {
@@ -39,5 +34,50 @@ export function digestTransition(from: string | null, to: string | null): string
     if (!to || to === from) return fromShort;
 
     return `${fromShort} → ${shortDigest(to)}`;
+
+}
+
+/** Emoji for a Castellan service state. */
+export function stateEmoji(state: ServiceState): string {
+
+    switch (state) {
+
+        case 'stable':
+        case 'idle':
+            return '✓';
+        case 'checking':
+            return '🔎';
+        case 'updating':
+            return '🚀';
+        case 'verifying':
+            return '🔬';
+        case 'rollback':
+            return '↩️';
+        case 'failed':
+            return '❌';
+        default:
+            return '·';
+
+    }
+
+}
+
+/** Emoji for a Castellan history event type. */
+export function eventEmoji(type: DeploymentEventType): string {
+
+    switch (type) {
+
+        case 'deploy':
+            return '📥';
+        case 'check':
+            return '🔎';
+        case 'rollback':
+            return '↩️';
+        case 'failure':
+            return '❌';
+        default:
+            return '·';
+
+    }
 
 }

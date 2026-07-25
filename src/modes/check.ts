@@ -2,32 +2,29 @@ import type {CastellanClient} from '../castellan/client.js';
 import * as gh from '../ghAnnotations.js';
 import {c} from '../theme.js';
 
-const TAG = c.accent('[castellan]');
-
 export type CheckOptions = {
     client: CastellanClient;
 };
 
-/** POST /v1/forceCheck and exit. */
+/** Ask Castellan to check registries / roll out, then exit. */
 export async function runCheck(opts: CheckOptions): Promise<number> {
 
-    console.log(`${c.primary('==>')} Castellan forceCheck`);
+    console.log('🔄 Checking registry for updates…');
 
     try {
 
         await opts.client.health();
-        console.log(`${TAG} ${c.muted('POST /v1/forceCheck')}`);
         await opts.client.forceCheck();
-        console.log(`${TAG} ${c.success('forceCheck accepted')}`);
-        gh.notice('Castellan forceCheck accepted', {title: 'castellan-cli'});
+        console.log('✓ Check started');
+        gh.notice('Castellan check started', {title: 'castellan'});
         return 0;
 
     } catch (err) {
 
         const msg = err instanceof Error ? err.message : String(err);
 
-        gh.error(msg, {title: 'castellan-cli: forceCheck failed'});
-        console.error(c.error(msg));
+        gh.error(msg, {title: 'castellan: check failed'});
+        console.error(`❌ ${c.error(msg)}`);
         return 1;
 
     }

@@ -1,5 +1,11 @@
 import {test} from 'kizu';
-import {digestTransition, formatDuration, padVisible} from './watchFormat.js';
+import {
+    digestTransition,
+    eventEmoji,
+    formatDuration,
+    padVisible,
+    stateEmoji,
+} from './watchFormat.js';
 
 test('formatDuration renders seconds under a minute', (assert) => {
 
@@ -50,5 +56,26 @@ test('digestTransition shows from → to when the digest advances', (assert) => 
         digestTransition('sha256:a1b2c3d4e5f6aaaa', 'sha256:f6e5d4c3b2a1bbbb'),
         'a1b2c3d4e5f6 → f6e5d4c3b2a1',
     );
+
+});
+
+test('stateEmoji maps each Castellan state', (assert) => {
+
+    assert.equal(stateEmoji('stable'), '✓');
+    assert.equal(stateEmoji('idle'), '✓');
+    assert.equal(stateEmoji('checking'), '🔎');
+    assert.equal(stateEmoji('updating'), '🚀');
+    assert.equal(stateEmoji('verifying'), '🔬');
+    assert.equal(stateEmoji('rollback'), '↩️');
+    assert.equal(stateEmoji('failed'), '❌');
+
+});
+
+test('eventEmoji maps each Castellan event type', (assert) => {
+
+    assert.equal(eventEmoji('deploy'), '📥');
+    assert.equal(eventEmoji('check'), '🔎');
+    assert.equal(eventEmoji('rollback'), '↩️');
+    assert.equal(eventEmoji('failure'), '❌');
 
 });
