@@ -34,15 +34,23 @@ castellan watch api-service
 ```
 
 ```text
-==> Watching Castellan services: api-service
-[castellan] POST /v1/forceCheck
-[castellan] forceCheck accepted
-[castellan]  DEPLOY  api  pulling sha256:f6e5d4…
-[castellan] api  UPDATING  a1b2c3d4e5f6 → f6e5d4c3b2a1
-[castellan] api  VERIFYING  f6e5d4c3b2a1
-[castellan] api  STABLE  f6e5d4c3b2a1
-==> Rollout settled healthy
+🔎 Watching api-service
+⏱ Timeout 15m
+✓ api STABLE myorg/api-service:staging a1b2c3d4e5f6
+🔄 Checking registry for updates…
+✓ Check started — waiting for rollout
+📥 api pulling sha256:f6e5d4…
+🚀 api UPDATING a1b2c3d4e5f6 → f6e5d4c3b2a1
+· waiting. UPDATING — 12s elapsed, 14m 48s left
+· waiting.. UPDATING — 17s elapsed, 14m 43s left
+✓ api STABLE f6e5d4c3b2a1
+✅ Healthy in 42s
+api a1b2c3d4e5f6 → f6e5d4c3b2a1
 ```
+
+Quiet polls rewrite the `· waiting…` line in a TTY; CI logs print each heartbeat on its own line. Colors and `STATE` pills show in a real terminal / GitHub Actions log.
+
+Castellan’s own health wait (`CASTELLAN_ROLLBACK_HEALTH_TIMEOUT_MS`, default 2m) is separate from this CLI `--timeout-ms`. Docker healthcheck `timeout` is only per probe, not the overall wait.
 
 ## Install
 
@@ -100,9 +108,9 @@ Service args match Castellan’s managed service **name**, or the image **reposi
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--no-force-check` | forceCheck on | Skip `POST /v1/forceCheck` |
+| `--no-force-check` | check on | Skip asking Castellan to check the registry |
 | `--poll-ms` | `5000` | Poll interval |
-| `--timeout-ms` | `900000` (15m) | Overall timeout |
+| `--timeout-ms` | `900000` (15m) | CLI wait for rollout to settle (not Docker/Castellan health timeouts) |
 
 ### Exit codes (`watch`)
 

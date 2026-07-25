@@ -1,15 +1,15 @@
 // Watch mode for Castellan rollouts:
 //
 //   1. Resolve services via Castellan /v1/status
-//   2. Optionally POST /v1/forceCheck
-//   3. Poll status + history; print new events and state changes
+//   2. Optionally ask Castellan to check registries
+//   3. Poll status + history; print friendly progress
 //   4. Exit 0 when watched services settle on a new digest; 1 on failure/timeout
 
 import {CastellanClient} from '../castellan/client.js';
 import {resolveServices} from '../castellan/resolve.js';
 import type {DeploymentEvent, ServiceStatus} from '../castellan/types.js';
 import * as gh from '../ghAnnotations.js';
-import {c, colorEventType, colorServiceState, shortDigest} from '../theme.js';
+import {c, colorServiceState, shortDigest} from '../theme.js';
 import {
     evaluateRollout,
     initialWatchState,
@@ -17,10 +17,16 @@ import {
     noteStatus,
     type RolloutWatchState,
 } from './rollout.js';
+import {
+    digestTransition,
+    eventEmoji,
+    formatDuration,
+    formatWatchHeartbeat,
+    stateEmoji,
+} from './watchFormat.js';
 
 const DEFAULT_POLL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 15 * 60_000;
-const TAG = c.accent('[castellan]');
 
 export type WatchOptions = {
     client: CastellanClient;
@@ -30,6 +36,8 @@ export type WatchOptions = {
     timeoutMs?: number;
     now?: () => number;
     sleep?: (ms: number) => Promise<void>;
+    /** Override for tests — defaults to process.stdout.isTTY. */
+    isTTY?: boolean;
 };
 
 export async function runWatch(opts: WatchOptions): Promise<number> {
@@ -39,8 +47,24 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
     const now = opts.now ?? Date.now;
     const sleep = opts.sleep ?? defaultSleep;
     const startedAt = now();
+    const progress = createProgressWriter(opts.isTTY ?? Boolean(process.stdout.isTTY));
 
-    console.log(`${c.primary('==>')} Watching Castellan services: ${c.fg(opts.serviceQueries.join(', '))}`);
+    const log = (...args: unknown[]): void => {
+
+        progress.clear();
+        console.log(...args);
+
+    };
+
+    const logError = (...args: unknown[]): void => {
+
+        progress.clear();
+        console.error(...args);
+
+    };
+
+    log(`🔎 Watching ${c.fg(opts.serviceQueries.join(', '))}`);
+    log(`⏱ Timeout ${c.dim(formatDuration(timeoutMs))}`);
 
     let status;
 
@@ -53,15 +77,15 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
         const msg = err instanceof Error ? err.message : String(err);
 
-        gh.error(msg, {title: 'castellan-cli: Castellan unreachable'});
-        console.error(c.error(msg));
+        gh.error(msg, {title: 'castellan: Castellan unreachable'});
+        logError(`❌ ${c.error(msg)}`);
         return 1;
 
     }
 
     if (status.paused) {
 
-        console.log(`${TAG} ${c.warning('Castellan polling is paused — forceCheck / deploys may still run')}`);
+        log(`⚠️  ${c.warning('Castellan polling is paused — updates may still run')}`);
 
     }
 
@@ -75,8 +99,8 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
         const msg = err instanceof Error ? err.message : String(err);
 
-        gh.error(msg, {title: 'castellan-cli: ambiguous service'});
-        console.error(c.error(msg));
+        gh.error(msg, {title: 'castellan: ambiguous service'});
+        logError(`❌ ${c.error(msg)}`);
         return 1;
 
     }
@@ -84,10 +108,10 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
     if (resolved.missing.length > 0) {
 
         const known = status.services.map((service) => service.name).sort().join(', ') || '(none)';
-        const msg = `Unknown Castellan service(s): ${resolved.missing.join(', ')}. Known: ${known}`;
+        const msg = `Unknown service(s): ${resolved.missing.join(', ')}. Known: ${known}`;
 
-        gh.error(msg, {title: 'castellan-cli: service not found'});
-        console.error(c.error(msg));
+        gh.error(msg, {title: 'castellan: service not found'});
+        logError(`❌ ${c.error(msg)}`);
         return 1;
 
     }
@@ -97,8 +121,9 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
     for (const service of watched) {
 
-        console.log(
-            `${TAG} ${c.fg(service.name)} ${colorServiceState(service.state)} `
+        log(
+            `${stateEmoji(service.state)} ${c.fg(service.name)} `
+            + `${colorServiceState(service.state)} `
             + `${c.muted(`${service.repository}:${service.tag}`)} `
             + `${c.dim(shortDigest(service.currentDigest))}`,
         );
@@ -109,6 +134,7 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
     const seenEventKeys = new Set<string>();
     let historySeeded = false;
     const lastStates = Object.fromEntries(watched.map((service) => [service.name, service.state]));
+    let heartbeatTick = 0;
 
     // Seed seen events so we only stream fresh ones after watch start.
     try {
@@ -127,37 +153,38 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
         const msg = err instanceof Error ? err.message : String(err);
 
-        console.error(`${TAG} ${c.warning(`history seed failed: ${msg} — will seed on next successful poll`)}`);
+        logError(`⚠️  ${c.warning(`Couldn't load history yet: ${msg} — will retry`)}`);
 
     }
 
     if (opts.forceCheck) {
 
-        console.log(`${TAG} ${c.muted('POST /v1/forceCheck')}`);
+        log('🔄 Checking registry for updates…');
 
         try {
 
             await opts.client.forceCheck();
-            console.log(`${TAG} ${c.success('forceCheck accepted')}`);
+            log('✓ Check started — waiting for rollout');
 
         } catch (err) {
 
             const msg = err instanceof Error ? err.message : String(err);
 
-            gh.error(msg, {title: 'castellan-cli: forceCheck failed'});
-            console.error(c.error(msg));
+            gh.error(msg, {title: 'castellan: check failed'});
+            logError(`❌ ${c.error(msg)}`);
             return 1;
 
         }
 
     } else {
 
-        console.log(`${TAG} ${c.muted('watching only (--no-force-check)')}`);
+        log(`👀 Watching for changes ${c.dim('(skipped registry check)')}`);
 
     }
 
     const onSigint = (): void => {
 
+        progress.clear();
         process.exit(130);
 
     };
@@ -168,10 +195,10 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
         if (now() - startedAt > timeoutMs) {
 
-            const msg = `Timed out after ${Math.round(timeoutMs / 1000)}s waiting for Castellan rollout`;
+            const msg = `Timed out after ${formatDuration(timeoutMs)} waiting for rollout`;
 
-            gh.error(msg, {title: 'castellan-cli: timeout'});
-            console.error(c.error(msg));
+            gh.error(msg, {title: 'castellan: timeout'});
+            logError(`❌ ${c.error(msg)}`);
             return 1;
 
         }
@@ -193,7 +220,7 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
             const msg = err instanceof Error ? err.message : String(err);
 
-            console.error(`${TAG} ${c.warning(`poll failed: ${msg}`)}`);
+            logError(`⚠️  ${c.warning(`Lost connection: ${msg} — retrying…`)}`);
             await sleep(pollMs);
             continue;
 
@@ -206,7 +233,6 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
             seedRecoveredHistory(events, startedAt, seenEventKeys);
             historySeeded = true;
-            console.log(`${TAG} ${c.muted('seeded history after poll recovery (pre-watch events ignored)')}`);
 
         }
 
@@ -214,12 +240,13 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
             .filter((event) => watchedNames.has(event.service) && !seenEventKeys.has(eventKey(event)))
             .sort((a, b) => a.at.localeCompare(b.at));
 
+        let printedActivity = false;
+
         for (const event of fresh) {
 
             seenEventKeys.add(eventKey(event));
-            console.log(
-                `  ${TAG} ${colorEventType(event.type)} ${c.fg(event.service)} ${colorEventMessage(event)}`,
-            );
+            log(`${eventEmoji(event.type)} ${c.fg(event.service)} ${colorEventMessage(event)}`);
+            printedActivity = true;
 
         }
 
@@ -232,14 +259,13 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
             if (prev !== service.state) {
 
-                console.log(
-                    `${TAG} ${c.fg(service.name)} ${colorServiceState(service.state)} `
-                    + `${c.dim(shortDigest(service.currentDigest))}${
-                     service.desiredDigest && service.desiredDigest !== service.currentDigest
-                        ? ` ${c.muted('→')} ${c.dim(shortDigest(service.desiredDigest))}`
-                        : ''}`,
+                log(
+                    `${stateEmoji(service.state)} ${c.fg(service.name)} `
+                    + `${colorServiceState(service.state)} `
+                    + `${c.dim(digestTransition(service.currentDigest, service.desiredDigest))}`,
                 );
                 lastStates[service.name] = service.state;
+                printedActivity = true;
 
             }
 
@@ -249,8 +275,19 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
         if (outcome.kind === 'success') {
 
-            console.log(`${c.success('==>')} Rollout settled healthy`);
-            gh.notice('Castellan rollout settled healthy', {title: 'castellan-cli'});
+            const elapsed = formatDuration(now() - startedAt);
+
+            log(`✅ Healthy in ${c.success(elapsed)}`);
+
+            for (const service of services) {
+
+                const baseline = watch.services[service.name]?.baselineDigest ?? null;
+
+                log(`${c.fg(service.name)} ${c.dim(digestTransition(baseline, service.currentDigest))}`);
+
+            }
+
+            gh.notice(`Castellan rollout settled healthy in ${elapsed}`, {title: 'castellan'});
             process.off('SIGINT', onSigint);
             return 0;
 
@@ -258,10 +295,26 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
         if (outcome.kind === 'failure') {
 
-            gh.error(outcome.reason, {title: 'castellan-cli: rollout failed'});
-            console.error(`${c.error('==>')} ${outcome.reason}`);
+            const elapsed = formatDuration(now() - startedAt);
+
+            gh.error(outcome.reason, {title: 'castellan: rollout failed'});
+            logError(`❌ ${c.error(outcome.reason)} ${c.dim(`(after ${elapsed})`)}`);
             process.off('SIGINT', onSigint);
             return 1;
+
+        }
+
+        if (!printedActivity) {
+
+            const states = [...new Set(services.map((service) => service.state.toUpperCase()))];
+
+            progress.show(c.dim(formatWatchHeartbeat({
+                elapsedMs: now() - startedAt,
+                timeoutMs,
+                states,
+                tick: heartbeatTick,
+            })));
+            heartbeatTick += 1;
 
         }
 
@@ -317,5 +370,41 @@ function defaultSleep(ms: number): Promise<void> {
         setTimeout(resolve, ms);
 
     });
+
+}
+
+/** Same-line heartbeat on TTYs; newline heartbeats in CI logs. */
+export function createProgressWriter(isTTY: boolean): {
+    show: (line: string) => void;
+    clear: () => void;
+} {
+
+    let active = false;
+
+    return {
+        show(line: string): void {
+
+            if (isTTY) {
+
+                process.stdout.write(`\r${line}\x1b[K`);
+                active = true;
+                return;
+
+            }
+
+            console.log(line);
+
+        },
+        clear(): void {
+
+            if (active && isTTY) {
+
+                process.stdout.write('\r\x1b[K');
+                active = false;
+
+            }
+
+        },
+    };
 
 }
