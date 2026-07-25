@@ -146,3 +146,50 @@ test('evaluateRollout stays pending while verifying', (assert) => {
     assert.equal(outcome.kind, 'pending');
 
 });
+
+test('evaluateRollout fails immediately when a sibling is still active', (assert) => {
+
+    // Put the still-active service first so Object.values hits ACTIVE before
+    // failed — the old single-pass evaluator returned pending and timed out.
+    const baseline = [
+        service({name: 'worker', state: 'stable', repository: 'worker'}),
+        service({name: 'api', state: 'stable'}),
+    ];
+    let state = initialWatchState(baseline);
+
+    state = noteStatus(state, [
+        service({
+            name: 'worker',
+            state: 'updating',
+            repository: 'worker',
+            desiredDigest: 'sha256:new',
+        }),
+        service({name: 'api', state: 'updating', desiredDigest: 'sha256:new'}),
+    ]);
+
+    const mixed = [
+        service({
+            name: 'worker',
+            state: 'verifying',
+            repository: 'worker',
+            currentDigest: 'sha256:new',
+            desiredDigest: 'sha256:new',
+        }),
+        service({
+            name: 'api',
+            state: 'failed',
+            lastError: 'health check timed out',
+            desiredDigest: 'sha256:new',
+        }),
+    ];
+
+    const outcome = evaluateRollout(state, mixed);
+
+    assert.equal(outcome.kind, 'failure');
+    if (outcome.kind === 'failure') {
+
+        assert.equal(outcome.reason.includes('health check timed out'), true);
+
+    }
+
+});

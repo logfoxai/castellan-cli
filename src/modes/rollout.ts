@@ -131,6 +131,7 @@ export function evaluateRollout(
 
     const byName = new Map(services.map((service) => [service.name, service]));
 
+    // Failures first — an active sibling must not mask a failed watched service.
     for (const watch of Object.values(state.services)) {
 
         const service = byName.get(watch.name);
@@ -149,12 +150,6 @@ export function evaluateRollout(
 
         }
 
-        if (ACTIVE_STATES.has(service.state)) {
-
-            return {kind: 'pending'};
-
-        }
-
     }
 
     for (const watch of Object.values(state.services)) {
@@ -162,6 +157,12 @@ export function evaluateRollout(
         const service = byName.get(watch.name);
 
         if (!service) continue;
+
+        if (ACTIVE_STATES.has(service.state)) {
+
+            return {kind: 'pending'};
+
+        }
 
         if (service.state !== 'stable' && service.state !== 'idle') {
 

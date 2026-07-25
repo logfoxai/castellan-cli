@@ -199,19 +199,14 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
         }
 
-        // If the initial history seed failed, mark everything currently in
-        // history as seen without applying it — otherwise stale failure/rollback
-        // events from prior deploys can false-fail this CI run.
+        // If the initial history seed failed, ignore only pre-watch events.
+        // Events that landed during the gap (e.g. forceCheck deploy/failure)
+        // stay unseen so noteEvents can apply them.
         if (!historySeeded) {
 
-            for (const event of events) {
-
-                seenEventKeys.add(eventKey(event));
-
-            }
-
+            seedRecoveredHistory(events, startedAt, seenEventKeys);
             historySeeded = true;
-            console.log(`${TAG} ${c.muted('seeded history after poll recovery (prior events ignored)')}`);
+            console.log(`${TAG} ${c.muted('seeded history after poll recovery (pre-watch events ignored)')}`);
 
         }
 
@@ -276,9 +271,30 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
 }
 
-function eventKey(event: DeploymentEvent): string {
+export function eventKey(event: DeploymentEvent): string {
 
     return `${event.at}|${event.type}|${event.service}|${event.message}`;
+
+}
+
+/** Mark only events older than watch start as seen (recovery after a failed seed). */
+export function seedRecoveredHistory(
+    events: DeploymentEvent[],
+    watchStartedAtMs: number,
+    seenEventKeys: Set<string>,
+): void {
+
+    const startedAtIso = new Date(watchStartedAtMs).toISOString();
+
+    for (const event of events) {
+
+        if (event.at < startedAtIso) {
+
+            seenEventKeys.add(eventKey(event));
+
+        }
+
+    }
 
 }
 
