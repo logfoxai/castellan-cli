@@ -127,26 +127,6 @@ test('evaluateRollout fails after rollback to baseline digest', (assert) => {
 
 });
 
-test('evaluateRollout stays pending while verifying', (assert) => {
-
-    const baseline = [service({name: 'api', state: 'stable'})];
-    let state = initialWatchState(baseline);
-    const verifying = [
-        service({
-            name: 'api',
-            state: 'verifying',
-            currentDigest: 'sha256:new',
-            desiredDigest: 'sha256:new',
-        }),
-    ];
-
-    state = noteStatus(state, verifying);
-    const outcome = evaluateRollout(state, verifying);
-
-    assert.equal(outcome.kind, 'pending');
-
-});
-
 test('evaluateRollout fails immediately when a sibling is still active', (assert) => {
 
     // Put the still-active service first so Object.values hits ACTIVE before
@@ -170,7 +150,7 @@ test('evaluateRollout fails immediately when a sibling is still active', (assert
     const mixed = [
         service({
             name: 'worker',
-            state: 'verifying',
+            state: 'updating',
             repository: 'worker',
             currentDigest: 'sha256:new',
             desiredDigest: 'sha256:new',

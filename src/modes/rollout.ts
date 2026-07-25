@@ -20,7 +20,6 @@ export type RolloutWatchState = {
 const ACTIVE_STATES: ReadonlySet<ServiceState> = new Set([
     'checking',
     'updating',
-    'verifying',
     'rollback',
 ]);
 
