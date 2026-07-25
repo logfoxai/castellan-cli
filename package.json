@@ -23,7 +23,7 @@
   "homepage": "https://github.com/logfoxai/castellan-cli#readme",
   "type": "module",
   "bin": {
-    "castellan-cli": "bin/castellan-cli"
+    "castellan": "bin/castellan"
   },
   "engines": {
     "node": ">=24"
