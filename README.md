@@ -35,7 +35,6 @@ castellan watch api-service
 
 ```text
 🔎 Watching api-service
-⏱ Timeout 15m
 ✓ api STABLE myorg/api-service:staging a1b2c3d4e5f6
 🔄 Checking registry for updates…
 ✓ Check started — waiting for rollout
@@ -126,7 +125,7 @@ Castellan-native:
 
 1. Capture baseline digests from `/v1/status`
 2. Optionally `forceCheck`
-3. Stream new `/v1/history` events and state transitions (`checking` → `updating` → `verifying` → `stable` / `rollback` / `failed`)
+3. Stream new `/v1/history` events and state transitions (`checking` → `updating` → `stable` / `rollback` / `failed`)
 4. **Success** when every watched service saw deploy activity and settled `stable`/`idle` with `currentDigest ≠ baseline`
 5. **Failure** on `failed` state, failure events, or rollback that ends on the baseline digest
 
