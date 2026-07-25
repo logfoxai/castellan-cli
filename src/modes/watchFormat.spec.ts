@@ -3,7 +3,6 @@ import {
     digestTransition,
     eventEmoji,
     formatDuration,
-    padVisible,
     stateEmoji,
 } from './watchFormat.js';
 
@@ -25,18 +24,6 @@ test('formatDuration renders minutes and seconds past a minute', (assert) => {
 test('formatDuration clamps negative input to zero', (assert) => {
 
     assert.equal(formatDuration(-500), '0s');
-
-});
-
-test('padVisible right-pads to the target width', (assert) => {
-
-    assert.equal(padVisible('ab', 2, 5), 'ab   ');
-
-});
-
-test('padVisible never truncates when content is wider than target', (assert) => {
-
-    assert.equal(padVisible('abcdef', 6, 4), 'abcdef');
 
 });
 

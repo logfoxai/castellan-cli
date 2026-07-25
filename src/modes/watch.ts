@@ -21,13 +21,11 @@ import {
     digestTransition,
     eventEmoji,
     formatDuration,
-    padVisible,
     stateEmoji,
 } from './watchFormat.js';
 
 const DEFAULT_POLL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 15 * 60_000;
-const INDENT = '  ';
 
 export type WatchOptions = {
     client: CastellanClient;
@@ -101,13 +99,11 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
     const watched = resolved.resolved;
     const watchedNames = new Set(watched.map((service) => service.name));
-    const nameWidth = watched.reduce((max, service) => Math.max(max, service.name.length), 1);
-    const nameCell = (name: string): string => padVisible(c.fg(name), name.length, nameWidth);
 
     for (const service of watched) {
 
         console.log(
-            `${INDENT}${stateEmoji(service.state)} ${nameCell(service.name)} `
+            `${stateEmoji(service.state)} ${c.fg(service.name)} `
             + `${colorServiceState(service.state)} `
             + `${c.muted(`${service.repository}:${service.tag}`)} `
             + `${c.dim(shortDigest(service.currentDigest))}`,
@@ -227,8 +223,7 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
             seenEventKeys.add(eventKey(event));
             console.log(
-                `${INDENT}${eventEmoji(event.type)} ${nameCell(event.service)} `
-                + `${colorEventMessage(event)}`,
+                `${eventEmoji(event.type)} ${c.fg(event.service)} ${colorEventMessage(event)}`,
             );
 
         }
@@ -243,7 +238,7 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
             if (prev !== service.state) {
 
                 console.log(
-                    `${INDENT}${stateEmoji(service.state)} ${nameCell(service.name)} `
+                    `${stateEmoji(service.state)} ${c.fg(service.name)} `
                     + `${colorServiceState(service.state)} `
                     + `${c.dim(digestTransition(service.currentDigest, service.desiredDigest))}`,
                 );
@@ -266,8 +261,7 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
                 const baseline = watch.services[service.name]?.baselineDigest ?? null;
 
                 console.log(
-                    `${INDENT}${nameCell(service.name)} `
-                    + `${c.dim(digestTransition(baseline, service.currentDigest))}`,
+                    `${c.fg(service.name)} ${c.dim(digestTransition(baseline, service.currentDigest))}`,
                 );
 
             }

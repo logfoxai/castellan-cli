@@ -35,18 +35,15 @@ castellan watch api-service
 
 ```text
 🔎 Watching api-service
-  ✓ api  STABLE  myorg/api-service:staging  a1b2c3d4e5f6
-
+✓ api STABLE myorg/api-service:staging a1b2c3d4e5f6
 🔄 Checking registry for updates…
 ✓ Check started — waiting for rollout
-
-  📥 api  pulling sha256:f6e5d4…
-  🚀 api  UPDATING  a1b2c3d4e5f6 → f6e5d4c3b2a1
-  🔬 api  VERIFYING  f6e5d4c3b2a1
-  ✓  api  STABLE  f6e5d4c3b2a1
-
+📥 api pulling sha256:f6e5d4…
+🚀 api UPDATING a1b2c3d4e5f6 → f6e5d4c3b2a1
+🔬 api VERIFYING f6e5d4c3b2a1
+✓ api STABLE f6e5d4c3b2a1
 ✅ Healthy in 42s
-  api  a1b2c3d4e5f6 → f6e5d4c3b2a1
+api a1b2c3d4e5f6 → f6e5d4c3b2a1
 ```
 
 (Colors and `STATE` pills show in a real terminal / GitHub Actions log.)

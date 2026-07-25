@@ -15,17 +15,6 @@ export function formatDuration(ms: number): string {
 
 }
 
-/**
- * Right-pad `rendered` to `width` columns using its known visible length.
- * `visibleLen` is passed explicitly because `rendered` may contain ANSI codes
- * whose bytes must not count toward the column width.
- */
-export function padVisible(rendered: string, visibleLen: number, width: number): string {
-
-    return rendered + ' '.repeat(Math.max(0, width - visibleLen));
-
-}
-
 /** `from` alone, or `from → to` when the digest advanced. */
 export function digestTransition(from: string | null, to: string | null): string {
 
