@@ -72,7 +72,7 @@ async function withErrors(fn: () => Promise<void>): Promise<void> {
 const program = new Command();
 
 program
-    .name('castellan-cli')
+    .name('castellan')
     .description('Official CLI for Castellan — trigger rollouts and watch them settle.')
     .version('0.0.0-autorel');
 
