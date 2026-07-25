@@ -7,7 +7,7 @@
 
 import {CastellanClient} from '../castellan/client.js';
 import {resolveServices} from '../castellan/resolve.js';
-import type {DeploymentEvent, ServiceStatus} from '../castellan/types.js';
+import type {DeploymentEvent, ServiceState, ServiceStatus} from '../castellan/types.js';
 import * as gh from '../ghAnnotations.js';
 import {c, colorEventType, colorServiceState, shortDigest} from '../theme.js';
 import {
@@ -17,6 +17,13 @@ import {
     noteStatus,
     type RolloutWatchState,
 } from './rollout.js';
+import {
+    EVENT_CELL_WIDTH,
+    STATE_CELL_WIDTH,
+    digestTransition,
+    formatDuration,
+    padVisible,
+} from './watchFormat.js';
 
 const DEFAULT_POLL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 15 * 60_000;
@@ -94,11 +101,15 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
     const watched = resolved.resolved;
     const watchedNames = new Set(watched.map((service) => service.name));
+    const nameWidth = watched.reduce((max, service) => Math.max(max, service.name.length), 1);
+    const nameCell = (name: string): string => padVisible(c.fg(name), name.length, nameWidth);
+    const stateCell = (state: ServiceState): string =>
+        padVisible(colorServiceState(state), state.length + 2, STATE_CELL_WIDTH);
 
     for (const service of watched) {
 
         console.log(
-            `${TAG} ${c.fg(service.name)} ${colorServiceState(service.state)} `
+            `${TAG} ${nameCell(service.name)} ${stateCell(service.state)} `
             + `${c.muted(`${service.repository}:${service.tag}`)} `
             + `${c.dim(shortDigest(service.currentDigest))}`,
         );
@@ -218,7 +229,9 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
             seenEventKeys.add(eventKey(event));
             console.log(
-                `  ${TAG} ${colorEventType(event.type)} ${c.fg(event.service)} ${colorEventMessage(event)}`,
+                `  ${TAG} `
+                + `${padVisible(colorEventType(event.type), event.type.length + 2, EVENT_CELL_WIDTH)} `
+                + `${nameCell(event.service)} ${colorEventMessage(event)}`,
             );
 
         }
@@ -233,11 +246,8 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
             if (prev !== service.state) {
 
                 console.log(
-                    `${TAG} ${c.fg(service.name)} ${colorServiceState(service.state)} `
-                    + `${c.dim(shortDigest(service.currentDigest))}${
-                     service.desiredDigest && service.desiredDigest !== service.currentDigest
-                        ? ` ${c.muted('→')} ${c.dim(shortDigest(service.desiredDigest))}`
-                        : ''}`,
+                    `${TAG} ${nameCell(service.name)} ${stateCell(service.state)} `
+                    + `${c.dim(digestTransition(service.currentDigest, service.desiredDigest))}`,
                 );
                 lastStates[service.name] = service.state;
 
@@ -249,8 +259,22 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
         if (outcome.kind === 'success') {
 
-            console.log(`${c.success('==>')} Rollout settled healthy`);
-            gh.notice('Castellan rollout settled healthy', {title: 'castellan-cli'});
+            const elapsed = formatDuration(now() - startedAt);
+
+            console.log(`${c.success('==>')} Rollout settled healthy ${c.dim(`in ${elapsed}`)}`);
+
+            for (const service of services) {
+
+                const baseline = watch.services[service.name]?.baselineDigest ?? null;
+
+                console.log(
+                    `    ${nameCell(service.name)} `
+                    + `${c.dim(digestTransition(baseline, service.currentDigest))}`,
+                );
+
+            }
+
+            gh.notice(`Castellan rollout settled healthy in ${elapsed}`, {title: 'castellan-cli'});
             process.off('SIGINT', onSigint);
             return 0;
 
@@ -258,8 +282,10 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
 
         if (outcome.kind === 'failure') {
 
+            const elapsed = formatDuration(now() - startedAt);
+
             gh.error(outcome.reason, {title: 'castellan-cli: rollout failed'});
-            console.error(`${c.error('==>')} ${outcome.reason}`);
+            console.error(`${c.error('==>')} ${outcome.reason} ${c.dim(`(after ${elapsed})`)}`);
             process.off('SIGINT', onSigint);
             return 1;
 
