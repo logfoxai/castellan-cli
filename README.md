@@ -22,7 +22,7 @@
 
 # Get started
 
-[`castellan-cli`](https://www.npmjs.com/package/castellan-cli) is the command-line companion to [Castellan](https://github.com/logfoxai/castellan) — the compose deploy controller with health checks, rollback, and a dashboard.
+[**Castellan CLI**](https://www.npmjs.com/package/castellan-cli) is the command-line companion to [Castellan](https://github.com/logfoxai/castellan) — the compose deploy controller with health checks, rollback, and a dashboard.
 
 Use the **dashboard** for day-to-day ops. Use this CLI in **automation** (GitHub Actions, scripts) when you need a hard gate after pushing a new image digest.
 
