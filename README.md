@@ -35,7 +35,6 @@ castellan watch api-service
 
 ```text
 🔎 Watching api-service
-⏱ Timeout 15m
 ✓ api STABLE myorg/api-service:staging a1b2c3d4e5f6
 🔄 Checking registry for updates…
 ✓ Check started — waiting for rollout

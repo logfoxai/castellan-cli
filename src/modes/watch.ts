@@ -64,7 +64,6 @@ export async function runWatch(opts: WatchOptions): Promise<number> {
     };
 
     log(`🔎 Watching ${c.fg(opts.serviceQueries.join(', '))}`);
-    log(`⏱ Timeout ${c.dim(formatDuration(timeoutMs))}`);
 
     let status;
 
