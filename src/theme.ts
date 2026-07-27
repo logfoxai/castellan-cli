@@ -81,7 +81,6 @@ export function colorServiceState(state: ServiceState): string {
         case 'checking':
             return pill('CHECKING', 'pending');
         case 'updating':
-        case 'verifying':
             return pill(state.toUpperCase(), 'rolling');
         case 'rollback':
             return pill('ROLLBACK', 'warning');

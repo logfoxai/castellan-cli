@@ -58,8 +58,6 @@ export function stateEmoji(state: ServiceState): string {
             return '🔎';
         case 'updating':
             return '🚀';
-        case 'verifying':
-            return '🔬';
         case 'rollback':
             return '↩️';
         case 'failed':

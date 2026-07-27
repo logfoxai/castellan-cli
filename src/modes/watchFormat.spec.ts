@@ -85,7 +85,6 @@ test('stateEmoji maps each Castellan state', (assert) => {
     assert.equal(stateEmoji('idle'), '✓');
     assert.equal(stateEmoji('checking'), '🔎');
     assert.equal(stateEmoji('updating'), '🚀');
-    assert.equal(stateEmoji('verifying'), '🔬');
     assert.equal(stateEmoji('rollback'), '↩️');
     assert.equal(stateEmoji('failed'), '❌');
 

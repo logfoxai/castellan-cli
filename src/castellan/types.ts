@@ -3,7 +3,6 @@ export type ServiceState =
     | 'idle'
     | 'checking'
     | 'updating'
-    | 'verifying'
     | 'stable'
     | 'rollback'
     | 'failed';
