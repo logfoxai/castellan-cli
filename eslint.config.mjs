@@ -1,4 +1,6 @@
 import tseslint from 'typescript-eslint';
+import packageJson from 'eslint-plugin-package-json';
+import * as jsoncParser from 'jsonc-eslint-parser';
 
 export default tseslint.config(
     {
@@ -123,6 +125,19 @@ export default tseslint.config(
             '@typescript-eslint/explicit-function-return-type': ['error', {allowExpressions: true}],
             '@typescript-eslint/no-explicit-any': 'off',
             '@typescript-eslint/no-empty-object-type': 'off',
+        },
+    },
+
+    {
+        files: ['package.json'],
+        languageOptions: {
+            parser: jsoncParser,
+        },
+        plugins: {
+            'package-json': packageJson,
+        },
+        rules: {
+            'package-json/no-local-dependencies': ['error', {ignorePrivate: false}],
         },
     },
 );
